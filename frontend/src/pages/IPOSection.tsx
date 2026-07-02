@@ -110,12 +110,11 @@ export default function IPOSection() {
   const tableWrapperRef = useRef<HTMLDivElement>(null)
   const [canScrollRight, setCanScrollRight] = useState(false)
 
-  const fetchPage = useCallback(async (p: number) => {
+  const fetchPage = useCallback(async (p: number, signal?: AbortSignal) => {
     setLoading(true)
     setFetchError('')
-    const controller = new AbortController()
     try {
-      const r = await fetch(`/api/ipos?page=${p}&per_page=${PAGE_SIZE}`, { signal: controller.signal })
+      const r = await fetch(`/api/ipos?page=${p}&per_page=${PAGE_SIZE}`, { signal })
       if (!r.ok) throw new Error('Failed to load IPO data')
       const d = await r.json()
       setItems(d.data || [])
@@ -130,12 +129,12 @@ export default function IPOSection() {
     } finally {
       setLoading(false)
     }
-    return () => controller.abort()
   }, [])
 
   useEffect(() => {
-    const cleanup = fetchPage(page)
-    return () => { cleanup.then(fn => fn?.()) }
+    const controller = new AbortController()
+    fetchPage(page, controller.signal)
+    return () => controller.abort()
   }, [page, fetchPage])
 
   const checkScroll = useCallback(() => {

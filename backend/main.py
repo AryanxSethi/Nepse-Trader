@@ -104,10 +104,10 @@ async def seed_daily_history(cache: dict):
             logger.warning("Indices.aspx scrape failed: %s", e)
 
     if records:
-        records.sort(key=lambda r: r['date'])
+        records.sort(key=lambda r: r.get('date', ''))
         history = []
         for r in records:
-            dt = r['date']
+            dt = r.get('date', '')
             if isinstance(dt, str):
                 dt = date.fromisoformat(dt)
             close = r.get('close') or r.get('ltp', 0)
@@ -414,7 +414,7 @@ async def market_overview():
             losers.reverse()
 
         if not active and m_prices:
-            active = [{"symbol": p["symbol"], "ltp": p.get("ltp"), "turnover": p.get("turnover")} for p in m_prices[:10]]
+            active = [{"symbol": p.get("symbol", ""), "ltp": p.get("ltp"), "turnover": p.get("turnover")} for p in m_prices[:10]]
 
         tops: dict | None = None
         if not gainers:
@@ -462,13 +462,13 @@ async def market_index_history():
     if daily:
         merged.extend(daily)
     if hourly:
-        daily_ts = daily[-1]['time'] if daily else 0
+        daily_ts = daily[-1].get('time', 0) if daily else 0
         for p in hourly:
-            if p['time'] > daily_ts:
+            if p.get('time', 0) > daily_ts:
                 merged.append(p)
     if tail:
-        hourly_ts = hourly[-1]['time'] if hourly else 0
-        has_tail_today = any(p['time'] > hourly_ts for p in tail[-6:])
+        hourly_ts = hourly[-1].get('time', 0) if hourly else 0
+        has_tail_today = any(p.get('time', 0) > hourly_ts for p in tail[-6:])
         if has_tail_today:
             merged.extend(tail[-3:])
 
@@ -777,7 +777,7 @@ async def compare_stocks(symbols: str = ""):
                 rows = await session.execute(
                     select(DailyPrice)
                     .where(DailyPrice.symbol == sym)
-                    .order_by(DailyPrice.date.desc())
+                    .order_by(DailyPrice.date)
                     .limit(120)
                 )
                 records = [r.to_dict() for r in rows.scalars().all()]
@@ -787,7 +787,8 @@ async def compare_stocks(symbols: str = ""):
             if today_candle and (not records or records[-1].get("date") != date.today().isoformat()):
                 records.append(today_candle)
             if len(records) >= 2:
-                item["prices"] = records[::-1]
+                records.sort(key=lambda r: r.get("date", ""))
+                item["prices"] = records
             if len(records) >= 20:
                 import pandas as pd
                 df = pd.DataFrame(records)
@@ -827,11 +828,20 @@ async def _fetch_yonepse_history(symbol: str, max_days: int = 120) -> list[dict]
                 if isinstance(data, list):
                     for row in data:
                         if row.get("symbol", "").upper() == sym_upper:
-                            row.setdefault("date", date_str)
                             ds = row.get("date", date_str)
                             if ds not in seen_dates:
                                 seen_dates.add(ds)
-                                records.append(row)
+                                close_val = float(row.get("close") or row.get("ltp") or row.get("closingPrice") or 0)
+                                records.append({
+                                    "symbol": sym,
+                                    "date": ds,
+                                    "open": float(row.get("open") or close_val),
+                                    "high": float(row.get("high") or close_val),
+                                    "low": float(row.get("low") or close_val),
+                                    "close": close_val,
+                                    "volume": int(row.get("volume", 0) or 0),
+                                    "turnover": float(row.get("turnover", 0) or 0),
+                                })
                             break
                 elif isinstance(data, dict):
                     series = data.get("series", {})
@@ -853,7 +863,7 @@ async def _fetch_yonepse_history(symbol: str, max_days: int = 120) -> list[dict]
                             })
             except Exception:
                 continue
-    records.sort(key=lambda r: r["date"])
+    records.sort(key=lambda r: r.get("date", ""))
     return records
 
 
@@ -1250,12 +1260,12 @@ async def health():
     except Exception as e:
         logger.warning("Health check DB failed: %s", e)
 
-    from data._http import circuit_breaker as fetcher_cb
+    from data.fetcher import circuit_breaker as fetcher_cb
     from data.nepalstock_fetcher import circuit_breaker as nepse_cb
     from data.merolagani_fetcher import circuit_breaker as mero_cb
 
     sources = {
-        'yonepse': fetcher_cb.status('yonepse'),
+        'yonepse': fetcher_cb.status('yonepse/live'),
         'merolagani': mero_cb.status('merolagani'),
         'nepalstock': nepse_cb.status('nepalstock'),
         'nepalipaisa': fetcher_cb.status('nepalipaisa/ipo'),

@@ -27,7 +27,7 @@ export default function Backtest() {
     fetch('/api/securities')
       .then((r) => r.json())
       .then((data) => setStocks(data || []))
-      .catch(() => {})
+      .catch((e) => console.error('Failed to load securities', e))
   }, [])
 
   const filteredStocks = stockSearch

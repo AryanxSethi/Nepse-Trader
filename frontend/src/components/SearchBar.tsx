@@ -26,6 +26,8 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const inputRef = useRef<HTMLInputElement>(null)
   const externalUpdate = useRef(false)
+  const abortRef = useRef<AbortController | null>(null)
+  const selectedSymbolRef = useRef('')
 
   useEffect(() => {
     if (initialValue !== undefined) {
@@ -43,10 +45,13 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
       onSearch(q)
       return
     }
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setLoading(true)
     setError(false)
     try {
-      const res = await fetch(`/api/search?query=${encodeURIComponent(q)}`)
+      const res = await fetch(`/api/search?query=${encodeURIComponent(q)}`, { signal: controller.signal })
       if (!res.ok) throw new Error()
       const data = await res.json()
       if (data.symbol && !data.suggestions?.length) {
@@ -71,6 +76,7 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
       externalUpdate.current = false
       return
     }
+    if (query === selectedSymbolRef.current) return
     clearTimeout(timer.current)
     if (query.length > 1) {
       timer.current = setTimeout(() => doSearch(query), 300)
@@ -89,8 +95,10 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
       return
     }
     clearTimeout(timer.current)
+    abortRef.current?.abort()
     if (suggestions.length > 0) {
       const s = suggestions[0]
+      selectedSymbolRef.current = s.symbol
       onSearch(s.symbol)
       setQuery(s.symbol)
       externalUpdate.current = true
@@ -102,6 +110,8 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
 
   const selectSuggestion = (s: SearchSuggestion) => {
     clearTimeout(timer.current)
+    abortRef.current?.abort()
+    selectedSymbolRef.current = s.symbol
     onSearch(s.symbol)
     setQuery(s.symbol)
     externalUpdate.current = true
@@ -131,7 +141,7 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
           {query && (
             <button
               type="button"
-              onClick={() => { setQuery(''); setSuggestions([]) }}
+              onClick={() => { abortRef.current?.abort(); setQuery(''); setSuggestions([]) }}
               className="text-text-muted hover:text-text transition-colors shrink-0"
             >
               <CloseIcon size={14} />
