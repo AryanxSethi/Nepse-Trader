@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import SearchBar from '../components/SearchBar'
 import DateRangeSelector from '../components/DateRangeSelector'
@@ -34,17 +34,11 @@ export default function Trade() {
     if (symbolFromParams) setSymbol(symbolFromParams)
   }, [symbolFromParams])
 
-  const endStrRef = useRef('')
-  const startStrRef = useRef('')
-  const dateStr = toDateStr(new Date())
-  if (endStrRef.current !== dateStr || startStrRef.current === '') {
-    const end = new Date()
-    const start = new Date(end.getTime() - dateDays * MS_PER_DAY)
-    startStrRef.current = toDateStr(start)
-    endStrRef.current = toDateStr(end)
-  }
-  const startStr = startStrRef.current
-  const endStr = endStrRef.current
+  const startStr = useMemo(
+    () => toDateStr(new Date(Date.now() - dateDays * MS_PER_DAY)),
+    [dateDays]
+  )
+  const endStr = toDateStr(new Date())
 
   const { data, isLoading, error } = useStockHistory(symbol, startStr, endStr)
 
