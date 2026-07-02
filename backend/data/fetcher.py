@@ -1,90 +1,82 @@
-import httpx
-from datetime import date
-from typing import Optional
+import logging
+
+from data._http import (
+    CircuitBreaker,
+    FetchResult,
+    retry_get_json,
+    retry_get_text,
+)
+
+logger = logging.getLogger('fetcher')
 
 YONEPSE_BASE = "https://shubhamnpk.github.io/yonepse"
+circuit_breaker = CircuitBreaker(threshold=3, cooloff=60.0)
+
+
+async def _fetch_json(path: str, source: str) -> FetchResult:
+    url = f"{YONEPSE_BASE}{path}"
+    if circuit_breaker.is_open(source):
+        logger.warning('[%s] circuit open, skipping', source)
+        return FetchResult(ok=False, source=source, error='circuit open')
+    result = await retry_get_json(url, source=source)
+    if result.ok:
+        circuit_breaker.record_success(source)
+    else:
+        circuit_breaker.record_failure(source)
+    return result
 
 
 async def fetch_all_securities() -> list[dict]:
-    url = f"{YONEPSE_BASE}/data/nepse_data.json"
-    try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            resp = await c.get(url)
-            resp.raise_for_status()
-            return resp.json()
-    except Exception:
-        return []
+    result = await _fetch_json("/data/nepse_data.json", "yonepse/securities")
+    if result.ok and isinstance(result.data, list):
+        return result.data
+    logger.warning('fetch_all_securities: %s', result.error or 'non-list response')
+    return []
 
 
 async def fetch_live_prices() -> list[dict]:
-    url = f"{YONEPSE_BASE}/data/market/live.json"
-    try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            resp = await c.get(url)
-            resp.raise_for_status()
-            return resp.json()
-    except Exception:
-        return []
+    result = await _fetch_json("/data/market/live.json", "yonepse/live")
+    if result.ok and isinstance(result.data, list):
+        return result.data
+    logger.warning('fetch_live_prices: %s', result.error or 'non-list response')
+    return []
 
 
-async def fetch_market_summary() -> list[dict]:
-    url = f"{YONEPSE_BASE}/data/market/summary.json"
-    try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            resp = await c.get(url)
-            resp.raise_for_status()
-            return resp.json()
-    except Exception:
-        return []
+async def fetch_market_summary() -> dict:
+    result = await _fetch_json("/data/market/summary.json", "yonepse/summary")
+    if result.ok and isinstance(result.data, dict):
+        return result.data
+    logger.warning('fetch_market_summary: %s', result.error or 'non-dict response')
+    return {}
 
 
 async def fetch_top_stocks() -> dict:
-    url = f"{YONEPSE_BASE}/data/market/top_stocks.json"
-    try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            resp = await c.get(url)
-            resp.raise_for_status()
-            return resp.json()
-    except Exception:
-        return {}
+    result = await _fetch_json("/data/market/top_stocks.json", "yonepse/top")
+    if result.ok and isinstance(result.data, dict):
+        return result.data
+    logger.warning('fetch_top_stocks: %s', result.error or 'non-dict response')
+    return {}
 
 
 async def fetch_indices() -> list[dict]:
-    url = f"{YONEPSE_BASE}/data/market/indices.json"
-    try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            resp = await c.get(url)
-            resp.raise_for_status()
-            return resp.json()
-    except Exception:
-        return []
-
-
-async def fetch_ltp_history(symbol: str, target_date: date) -> Optional[dict]:
-    try:
-        date_str = target_date.strftime("%Y-%m-%d")
-        url = f"{YONEPSE_BASE}/data/ltp/daily/{date_str}.json"
-        async with httpx.AsyncClient(timeout=15) as c:
-            resp = await c.get(url)
-            if resp.status_code != 200:
-                return None
-            data = resp.json()
-            if isinstance(data, list):
-                for row in data:
-                    if row.get("symbol", "").upper() == symbol.upper():
-                        return row
-    except Exception:
-        pass
-    return None
+    result = await _fetch_json("/data/market/indices.json", "yonepse/indices")
+    if result.ok and isinstance(result.data, list):
+        return result.data
+    logger.warning('fetch_indices: %s', result.error or 'non-list response')
+    return []
 
 
 async def fetch_market_status() -> dict:
-    url = f"{YONEPSE_BASE}/data/market/status.json"
-    try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            resp = await c.get(url)
-            if resp.status_code != 200:
-                return {"is_open": False, "last_checked": None}
-            return resp.json()
-    except Exception:
-        return {"is_open": False, "last_checked": None}
+    result = await _fetch_json("/data/market/status.json", "yonepse/status")
+    if result.ok and isinstance(result.data, dict):
+        return result.data
+    logger.warning('fetch_market_status: %s', result.error or 'non-dict response')
+    return {"is_open": False, "last_checked": None}
+
+
+async def fetch_ltp_history(date_str: str) -> dict | None:
+    result = await _fetch_json(f"/data/ltp/daily/{date_str}.json", "yonepse/ltp")
+    if result.ok and isinstance(result.data, dict):
+        return result.data
+    logger.debug('fetch_ltp_history(%s): %s', date_str, result.error or 'no data')
+    return None

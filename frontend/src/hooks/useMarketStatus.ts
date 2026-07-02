@@ -55,6 +55,7 @@ export function useMarketStatus() {
         return
       }
     } catch {
+      console.warn('Market status fetch failed, using computed status')
     }
     setStatus(computeLocalStatus())
   }, [])

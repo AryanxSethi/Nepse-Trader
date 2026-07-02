@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import EquityCurve from '../components/EquityCurve'
+import RefreshIndicator from '../components/RefreshIndicator'
 import { SkeletonBlock } from '../components/Skeleton'
 import { useBacktest } from '../hooks/useStockData'
 import { PageTransition } from '../components/Navbar'
@@ -20,6 +21,7 @@ export default function Backtest() {
   const [stocks, setStocks] = useState<StockOption[]>([])
   const [stockSearch, setStockSearch] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
+  const [computedAt, setComputedAt] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/securities')
@@ -36,6 +38,12 @@ export default function Backtest() {
     : []
 
   const { data, isLoading, error } = useBacktest(symbol, fastMA, slowMA, days, run)
+
+  useEffect(() => {
+    if (data && !isLoading) {
+      setComputedAt(new Date().toISOString())
+    }
+  }, [data, isLoading])
 
   const handleRun = () => {
     if (slowMA <= fastMA) {
@@ -187,6 +195,9 @@ export default function Backtest() {
                   <p className={`text-lg font-bold ${m.color}`}>{m.value}</p>
                 </div>
               ))}
+            </div>
+            <div className="flex items-center justify-center">
+              <RefreshIndicator fetchedAt={computedAt} />
             </div>
             <p className="text-[10px] text-text-muted/40 text-center">
               Past performance does not guarantee future results. For educational purposes only.

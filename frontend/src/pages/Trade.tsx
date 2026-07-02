@@ -8,6 +8,7 @@ import CompanyInfo from '../components/CompanyInfo'
 import ComparePanel from '../components/ComparePanel'
 import HermesSidebar from '../components/HermesSidebar'
 import FloatingChat from '../components/FloatingChat'
+import RefreshIndicator from '../components/RefreshIndicator'
 import { SkeletonBlock } from '../components/Skeleton'
 import { formatNPR } from '../utils/format'
 import { useStockHistory } from '../hooks/useStockData'
@@ -25,6 +26,7 @@ export default function Trade() {
   const [symbol, setSymbol] = useState(searchParams.get('symbol') || '')
   const [dateDays, setDateDays] = useState(90)
   const [activeTab, setActiveTab] = useState<'chart' | 'compare'>('chart')
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null)
 
   const symbolFromParams = searchParams.get('symbol')
 
@@ -45,6 +47,12 @@ export default function Trade() {
   const endStr = endStrRef.current
 
   const { data, isLoading, error } = useStockHistory(symbol, startStr, endStr)
+
+  useEffect(() => {
+    if (data && !isLoading) {
+      setFetchedAt(new Date().toISOString())
+    }
+  }, [data, isLoading])
 
   const handleSearch = useCallback((sym: string, s?: string, e?: string) => {
     setSymbol(sym)
@@ -99,6 +107,7 @@ export default function Trade() {
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           <div className="lg:col-span-3 space-y-4">
+            <RefreshIndicator fetchedAt={fetchedAt} />
             {activeTab === 'compare' ? (
               <ComparePanel />
             ) : (

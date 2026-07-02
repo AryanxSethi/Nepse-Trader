@@ -1,7 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageTransition } from '../components/Navbar'
 import FloatingChat from '../components/FloatingChat'
+import ErrorBanner from '../components/ErrorBanner'
+import RefreshIndicator from '../components/RefreshIndicator'
 import { TrendingUpIcon, TrendingDownIcon, SearchIcon } from '../components/Icons'
 import { formatNPR, formatPercent, formatChange } from '../utils/format'
 
@@ -30,27 +32,36 @@ export default function LiveMarket() {
   const [indices, setIndices] = useState<IndexData[]>([])
   const [prices, setPrices] = useState<StockPrice[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('turnover')
   const [sortAsc, setSortAsc] = useState(false)
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const res = await fetch('/api/market/live')
-      if (!res.ok) return
+      if (!res.ok) {
+        setError(`Server error (${res.status})`)
+        return
+      }
       const json = await res.json()
       setIndices(json.indices || [])
       setPrices(json.prices || [])
-    } catch {} finally {
+      setError(null)
+      setFetchedAt(new Date().toISOString())
+    } catch (e) {
+      setError('Failed to load market data. Check your connection.')
+    } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchData()
     const id = setInterval(fetchData, 30000)
     return () => clearInterval(id)
-  }, [])
+  }, [fetchData])
 
   const filtered = useMemo(() => {
     let items = prices
@@ -102,10 +113,15 @@ export default function LiveMarket() {
   return (
     <PageTransition>
       <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
-        <div className="flex items-center gap-2">
-          <TrendingUpIcon size={20} className="text-accent" />
-          <h1 className="text-xl font-bold text-text">Live Market</h1>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <TrendingUpIcon size={20} className="text-accent" />
+            <h1 className="text-xl font-bold text-text">Live Market</h1>
+          </div>
+          <RefreshIndicator fetchedAt={fetchedAt} />
         </div>
+
+        {error && <ErrorBanner message={error} onRetry={fetchData} />}
 
         {indices.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

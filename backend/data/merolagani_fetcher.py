@@ -5,11 +5,15 @@ from datetime import datetime, timezone
 import httpx
 from bs4 import BeautifulSoup
 
+from data._http import CircuitBreaker
+
 logger = logging.getLogger('merolagani_fetcher')
 
 MEROLAGANI_BASE = 'https://merolagani.com'
 TIMEOUT_SEC = 15
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+
+circuit_breaker = CircuitBreaker(threshold=3, cooloff=60.0)
 
 
 class MerolaganiFetcher:
@@ -26,11 +30,16 @@ class MerolaganiFetcher:
 
     async def _get(self, path: str) -> str | None:
         await self._init_client()
+        if circuit_breaker.is_open('merolagani'):
+            logger.warning('[merolagani] circuit open, skipping %s', path)
+            return None
         try:
             resp = await self._client.get(f'{MEROLAGANI_BASE}{path}')
             resp.raise_for_status()
+            circuit_breaker.record_success('merolagani')
             return resp.text
         except Exception as e:
+            circuit_breaker.record_failure('merolagani')
             logger.debug('Merolagani GET %s failed: %s', path, e)
             return None
 

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type JSX } from 'react'
 import { PageTransition } from '../components/Navbar'
+import ErrorBanner from '../components/ErrorBanner'
+import RefreshIndicator from '../components/RefreshIndicator'
 import { DocumentIcon, InfoIcon, SourceIcon, WarningIcon, ChevronLeftIcon, ChevronRightIcon } from '../components/Icons'
 import { SkeletonBlock } from '../components/Skeleton'
 
@@ -104,6 +106,7 @@ export default function IPOSection() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState('')
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const tableWrapperRef = useRef<HTMLDivElement>(null)
   const [canScrollRight, setCanScrollRight] = useState(false)
 
@@ -117,6 +120,7 @@ export default function IPOSection() {
       const d = await r.json()
       setItems(d.data || [])
       setPager(d.pager || null)
+      setFetchedAt(new Date().toISOString())
     } catch (e: unknown) {
       if (e instanceof Error && e.name !== 'AbortError') {
         setFetchError('Could not load IPO data.')
@@ -182,10 +186,7 @@ export default function IPOSection() {
         </div>
 
         {fetchError && (
-          <div className="rounded-xl bg-red/10 border border-red/20 p-3 flex items-start gap-2">
-            <WarningIcon size={14} className="text-red shrink-0 mt-0.5" />
-            <p className="text-xs text-red">{fetchError}</p>
-          </div>
+          <ErrorBanner message={fetchError} onRetry={() => fetchPage(page)} onDismiss={() => setFetchError('')} />
         )}
 
         <a
@@ -214,7 +215,10 @@ export default function IPOSection() {
 
         <div className="rounded-xl bg-surface-card border border-border p-3 md:p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-text">All IPO Issues</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-text">All IPO Issues</h2>
+              <RefreshIndicator fetchedAt={fetchedAt} />
+            </div>
             {pager && (
               <span className="text-[11px] text-text-muted">
                 Page {pageNo} of {totalPages}

@@ -29,6 +29,8 @@ export function useHermesStream() {
     const controller = new AbortController()
     abortRef.current = controller
 
+    const timeoutId = setTimeout(() => controller.abort(), 30000)
+
     try {
       const res = await fetch('/api/ask', {
         method: 'POST',
@@ -84,11 +86,17 @@ export function useHermesStream() {
         }
       }
     } catch (err: any) {
+      if (err.name === 'AbortError') {
+        callbacks.onToken('Request timed out. Please try a simpler question.')
+        callbacks.onDone(fullAnswer)
+        return
+      }
       if (err.name !== 'AbortError') {
         setError(err)
         callbacks.onError(err)
       }
     } finally {
+      clearTimeout(timeoutId)
       setIsPending(false)
       abortRef.current = null
     }

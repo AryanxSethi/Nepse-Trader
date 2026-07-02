@@ -1,14 +1,22 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import SignalTable from '../components/SignalTable'
 import { useSignals } from '../hooks/useStockData'
+import RefreshIndicator from '../components/RefreshIndicator'
 import { PageTransition } from '../components/Navbar'
 import { SignalIcon, WarningIcon } from '../components/Icons'
 
 export default function Signals() {
   const navigate = useNavigate()
   const [signalType, setSignalType] = useState('')
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const { data, isLoading, error } = useSignals(signalType || undefined)
+
+  useEffect(() => {
+    if (data && !isLoading) {
+      setFetchedAt(new Date().toISOString())
+    }
+  }, [data, isLoading])
 
   return (
     <PageTransition>
@@ -29,6 +37,7 @@ export default function Signals() {
         )}
 
         <div className="flex items-center gap-2">
+          <RefreshIndicator fetchedAt={fetchedAt} />
           <select
             value={signalType}
             onChange={(e) => setSignalType(e.target.value)}

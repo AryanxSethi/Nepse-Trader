@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PageTransition } from '../components/Navbar'
+import RefreshIndicator from '../components/RefreshIndicator'
 import { SearchIcon, CompanyIcon, WarningIcon } from '../components/Icons'
 import { SkeletonBlock } from '../components/Skeleton'
 import type { BrokerDetail } from '../types'
@@ -30,22 +31,24 @@ export default function Brokers() {
   const [query, setQuery] = useState('')
   const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly')
   const [fetchError, setFetchError] = useState('')
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null)
 
   const fetchBrokers = useCallback(async (q: string, p: string) => {
     setLoading(true)
     setFetchError('')
     try {
-      if (q) {
-        const res = await fetch(`/api/brokers/search?q=${encodeURIComponent(q)}`)
-        if (!res.ok) throw new Error(`API error: ${res.status}`)
-        const data = await res.json()
-        setBrokers((data.brokers || []).map((b: BrokerDetail, i: number) => ({ ...b, rank: i + 1 })))
-      } else {
-        const res = await fetch(`/api/brokers/top?period=${p}&limit=50`)
-        if (!res.ok) throw new Error(`API error: ${res.status}`)
-        const data = await res.json()
-        setBrokers(data.brokers || [])
-      }
+        if (q) {
+          const res = await fetch(`/api/brokers/search?q=${encodeURIComponent(q)}`)
+          if (!res.ok) throw new Error(`API error: ${res.status}`)
+          const data = await res.json()
+          setBrokers((data.brokers || []).map((b: BrokerDetail, i: number) => ({ ...b, rank: i + 1 })))
+        } else {
+          const res = await fetch(`/api/brokers/top?period=${p}&limit=50`)
+          if (!res.ok) throw new Error(`API error: ${res.status}`)
+          const data = await res.json()
+          setBrokers(data.brokers || [])
+        }
+        setFetchedAt(new Date().toISOString())
     } catch (e) {
       console.error('Brokers fetch failed:', e)
       setFetchError(e instanceof Error ? e.message : 'Failed to load broker data')
@@ -77,6 +80,9 @@ export default function Brokers() {
           <div>
             <h1 className="text-2xl font-bold text-text">Brokers</h1>
             <p className="text-sm text-text-muted">92 NEPSE member brokers</p>
+          </div>
+          <div className="ml-auto">
+            <RefreshIndicator fetchedAt={fetchedAt} />
           </div>
         </div>
 

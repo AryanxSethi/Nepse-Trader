@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { PageTransition } from '../components/Navbar'
 import FloatingChat from '../components/FloatingChat'
+import ErrorBanner from '../components/ErrorBanner'
+import RefreshIndicator from '../components/RefreshIndicator'
 import { formatNPR, formatPercent, formatChange } from '../utils/format'
 import {
   TrendingUpIcon, TrendingDownIcon, CloseIcon,
@@ -123,6 +125,9 @@ export default function Portfolio() {
   const [data, setData] = useState<PortfolioData | null>(null)
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const fetchPortfolio = useCallback(async () => {
     try {
@@ -130,8 +135,14 @@ export default function Portfolio() {
       if (res.ok) {
         const d = await res.json()
         setData(d)
+        setFetchedAt(new Date().toISOString())
+        setError(null)
+      } else {
+        setError('Failed to load portfolio data')
       }
-    } catch {} finally {
+    } catch {
+      setError('Failed to load portfolio data')
+    } finally {
       setLoading(false)
     }
   }, [])
@@ -144,9 +155,13 @@ export default function Portfolio() {
 
   const handleDelete = async (id: number) => {
     try {
-      await fetch(`/api/portfolio/holdings/${id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/portfolio/holdings/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete holding')
+      setDeleteError(null)
       fetchPortfolio()
-    } catch {}
+    } catch {
+      setDeleteError('Failed to delete holding')
+    }
   }
 
   if (loading) {
@@ -169,7 +184,10 @@ export default function Portfolio() {
     <PageTransition>
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-text">Portfolio</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold text-text">Portfolio</h1>
+            <RefreshIndicator fetchedAt={fetchedAt} />
+          </div>
           <button
             onClick={() => setShowAdd(true)}
             className="bg-accent text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-accent/90"
@@ -177,6 +195,13 @@ export default function Portfolio() {
             + Add Holding
           </button>
         </div>
+
+        {error && (
+          <ErrorBanner message={error} onRetry={() => { setLoading(true); fetchPortfolio() }} onDismiss={() => setError(null)} />
+        )}
+        {deleteError && (
+          <ErrorBanner message={deleteError} onDismiss={() => setDeleteError(null)} />
+        )}
 
         {/* Summary bar */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

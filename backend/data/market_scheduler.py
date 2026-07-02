@@ -92,8 +92,16 @@ async def refresh_all(force_status: bool = False):
 class MarketScheduler:
     def __init__(self):
         self._task: asyncio.Task | None = None
+        self._task: asyncio.Task | None = None
         self._last_price_refresh: datetime | None = None
         self._last_summary_refresh: datetime | None = None
+        self._consecutive_failures = 0
+        self._last_good_timestamps: dict[str, datetime | None] = {
+            'prices': None,
+            'summary': None,
+            'top': None,
+            'indices': None,
+        }
 
     def start(self):
         if self._task is None or self._task.done():
@@ -111,6 +119,18 @@ class MarketScheduler:
                 await self._task
             except asyncio.CancelledError:
                 pass
+
+    def get_backoff_seconds(self) -> int:
+        if self._consecutive_failures == 0:
+            return CHECK_INTERVAL_SEC
+        backoff_seconds = 60 * (2 ** min(self._consecutive_failures - 1, 4))
+        return min(backoff_seconds, 600)
+
+    def get_last_good_timestamps(self) -> dict:
+        return {
+            k: v.isoformat() if v else None
+            for k, v in self._last_good_timestamps.items()
+        }
 
     async def _run(self):
         logger.info("Market scheduler started")
@@ -132,20 +152,38 @@ class MarketScheduler:
                     if needs_price or needs_summary:
                         ok = await refresh_all(force_status=needs_summary)
                         if ok >= 3:
+                            self._consecutive_failures = 0
                             now = datetime.now(NPT)
                             if needs_price:
                                 self._last_price_refresh = now
+                                self._last_good_timestamps['prices'] = now
                             if needs_summary:
                                 self._last_summary_refresh = now
-                            logger.info(f"Refreshed {ok} data sources at {now.strftime('%H:%M')} NPT")
+                                self._last_good_timestamps['summary'] = now
+                                self._last_good_timestamps['top'] = now
+                                self._last_good_timestamps['indices'] = now
+                            logger.info("Refreshed %d data sources at %s NPT", ok, now.strftime('%H:%M'))
+                        else:
+                            self._consecutive_failures += 1
+                            backoff = self.get_backoff_seconds()
+                            logger.warning(
+                                "Scheduler refresh partial (%d/4 ok), consecutive=%d, next check in %ds",
+                                ok, self._consecutive_failures, backoff,
+                            )
+                            await asyncio.sleep(backoff)
+                            continue
                 else:
                     if self._last_price_refresh is not None or self._last_summary_refresh is not None:
                         logger.info("Market closed — pausing refreshes")
                         self._last_price_refresh = None
                         self._last_summary_refresh = None
+                    self._consecutive_failures = 0
+
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.error(f"Scheduler error: {e}")
+                logger.error("Scheduler error: %s", e)
+                self._consecutive_failures += 1
 
-            await asyncio.sleep(CHECK_INTERVAL_SEC)
+            sleep_secs = self.get_backoff_seconds() if self._consecutive_failures > 0 else CHECK_INTERVAL_SEC
+            await asyncio.sleep(sleep_secs)

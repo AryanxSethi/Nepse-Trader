@@ -3,7 +3,6 @@ import httpx
 import json
 import logging
 import re
-import time as time_module
 from datetime import datetime, timedelta, date, timezone
 from contextlib import asynccontextmanager
 
@@ -38,21 +37,15 @@ from guide.knowledge_base import find_guide_entry, get_popular_entries
 from guide.broker_directory import search_brokers, get_top_brokers
 from data.fetcher_sectors import get_sectors, get_stocks_by_sector
 from data.fetcher_ipo import load_ipos
-
+from data.cache import (
+    data_cache_get, data_cache_set,
+    get_market_cache, set_market_cache,
+    get_ipo_cache, set_ipo_cache,
+    prewarm_caches, persist_caches_on_exit,
+)
 
 LIVE_CACHE = {"data": [], "timestamp": None, "index_history": [], "current_index": None,
                "index_hourly": [], "index_30s": []}
-DATA_CACHE: dict[str, tuple[str, float]] = {}
-
-def _cache_get(key: str, ttl: float = 10.0) -> str | None:
-    if key in DATA_CACHE:
-        val, ts = DATA_CACHE[key]
-        if time_module.time() - ts < ttl:
-            return val
-    return None
-
-def _cache_set(key: str, val: str) -> None:
-    DATA_CACHE[key] = (val, time_module.time())
 
 scheduler = MarketScheduler()
 nepse_fetcher = NepalStockFetcher()
@@ -208,10 +201,12 @@ async def lifespan(app: FastAPI):
         await nepse_fetcher.ensure_css()
     except Exception as e:
         logger.warning("Failed to load CSS salts: %s", e)
+    await prewarm_caches()
     scheduler.start()
     await seed_daily_history(LIVE_CACHE)
     await start_index_polling(LIVE_CACHE)
     yield
+    await persist_caches_on_exit()
     await merolagani_fetcher.stop()
     await scheduler.stop()
     await nepse_fetcher.close()
@@ -227,17 +222,56 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+CACHE_CONTROL_ROUTES = {
+    "/api/ipos": "public, max-age=60",
+    "/api/securities": "public, max-age=300",
+    "/api/market/status": "public, max-age=30",
+    "/api/brokers/top": "public, max-age=300",
+    "/api/brokers/search": "public, max-age=300",
+    "/api/sectors": "public, max-age=300",
+}
+
+@app.middleware("http")
+async def add_cache_headers(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path in CACHE_CONTROL_ROUTES:
+        response.headers["Cache-Control"] = CACHE_CONTROL_ROUTES[path]
+    return response
+
+
+def _response_meta(source: str = '', stale: bool = False, error: str | None = None) -> dict:
+    return {
+        "source": source,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "stale": stale,
+        "error": error,
+    }
+
+def _envelope(data, meta: dict) -> dict:
+    return {"data": data, "meta": meta}
+
+def _envelope_list(data: list, meta: dict) -> dict:
+    return {"data": data, "meta": meta, "count": len(data)}
+
 
 async def _fetch_live_all() -> list[dict]:
+    cached_data, cached_ts = get_market_cache()
     try:
         data = await fetch_all_securities()
-        LIVE_CACHE["data"] = data
-        LIVE_CACHE["timestamp"] = datetime.now(timezone.utc)
-        return data
-    except Exception:
-        if LIVE_CACHE["data"]:
-            return LIVE_CACHE["data"]
-        return []
+        if data:
+            set_market_cache(data)
+            LIVE_CACHE["data"] = data
+            LIVE_CACHE["timestamp"] = datetime.now(timezone.utc)
+            return data
+    except Exception as e:
+        logger.warning("fetch_all_securities failed: %s", e)
+
+    if cached_data:
+        LIVE_CACHE["data"] = cached_data
+        LIVE_CACHE["timestamp"] = cached_ts
+        return cached_data
+    return []
 
 
 @app.get("/api/companies")
@@ -825,7 +859,14 @@ async def _fetch_yonepse_history(symbol: str, max_days: int = 120) -> list[dict]
 
 @app.get("/api/ipos")
 async def get_ipos(page: int = 1, per_page: int = 20):
-    return await load_ipos(page=page, per_page=per_page)
+    if page == 1 and per_page == 20:
+        cached, ts = get_ipo_cache()
+        if cached:
+            return cached
+    result = await load_ipos(page=page, per_page=per_page)
+    if page == 1 and per_page == 20 and result.get('data'):
+        set_ipo_cache(result)
+    return result
 
 
 @app.get("/api/brokers/top")
@@ -1092,13 +1133,13 @@ async def _generate_answer(req: QuestionRequest):
 
     if symbols:
         ctx_key = "ctx_" + "_".join(sorted(symbols))
-        cached = _cache_get(ctx_key)
+        cached = data_cache_get(ctx_key)
         if cached:
             data_context = cached
         else:
             data_context = await build_data_context(symbols)
             if data_context:
-                _cache_set(ctx_key, data_context)
+                data_cache_set(ctx_key, data_context)
     elif intent == "overview":
         try:
             from data.fetcher import fetch_top_stocks, fetch_indices, fetch_market_summary
@@ -1200,4 +1241,32 @@ async def ask_question(req: QuestionRequest):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
+    db_ok = False
+    try:
+        async with async_session() as session:
+            from sqlalchemy import text
+            await session.execute(text("SELECT 1"))
+            db_ok = True
+    except Exception as e:
+        logger.warning("Health check DB failed: %s", e)
+
+    from data._http import circuit_breaker as fetcher_cb
+    from data.nepalstock_fetcher import circuit_breaker as nepse_cb
+    from data.merolagani_fetcher import circuit_breaker as mero_cb
+
+    sources = {
+        'yonepse': fetcher_cb.status('yonepse'),
+        'merolagani': mero_cb.status('merolagani'),
+        'nepalstock': nepse_cb.status('nepalstock'),
+        'nepalipaisa': fetcher_cb.status('nepalipaisa/ipo'),
+    }
+
+    scheduler_ts = scheduler.get_last_good_timestamps()
+
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "time": datetime.now(timezone.utc).isoformat(),
+        "database": "connected" if db_ok else "error",
+        "sources": sources,
+        "scheduler": scheduler_ts,
+    }

@@ -1,12 +1,11 @@
 import logging
 from datetime import datetime, timezone
 
-import httpx
+from data._http import FetchResult, retry_get_json
 
 logger = logging.getLogger('nepalipaisa_fetcher')
 
 NEPALIPAISA_BASE = 'https://nepalipaisa.com'
-TIMEOUT_SEC = 15
 
 STATUS_MAP = {
     'open': 'open',
@@ -21,34 +20,28 @@ def _normalize_status(raw: str) -> str:
 
 
 async def fetch_ipos_from_nepalipaisa(page: int = 1, per_page: int = 20) -> dict | None:
-    async with httpx.AsyncClient(timeout=TIMEOUT_SEC, follow_redirects=True) as client:
-        try:
-            resp = await client.get(
-                f'{NEPALIPAISA_BASE}/api/GetIpos',
-                params={
-                    'stockSymbol': '',
-                    'pageNo': page,
-                    'itemsPerPage': per_page,
-                    'pagePerDisplay': 5,
-                },
-            )
-            if resp.status_code != 200:
-                logger.warning('nepalipaisa returned %s on page %s', resp.status_code, page)
-                return None
-            data = resp.json()
-            if data.get('statusCode') != 200:
-                logger.warning('nepalipaisa API error on page %s: %s', page, data.get('message'))
-                return None
-        except httpx.TimeoutException:
-            logger.warning('nepalipaisa timeout on page %s', page)
-            return None
-        except Exception as e:
-            logger.warning('nepalipaisa fetch failed on page %s: %s', page, e)
-            return None
+    result = await retry_get_json(
+        f'{NEPALIPAISA_BASE}/api/GetIpos',
+        source='nepalipaisa/ipo',
+        params={
+            'stockSymbol': '',
+            'pageNo': page,
+            'itemsPerPage': per_page,
+            'pagePerDisplay': 5,
+        },
+    )
+    if not result.ok:
+        logger.warning('nepalipaisa IPO fetch failed: %s', result.error)
+        return None
 
-    result = data.get('result', {})
-    items = result.get('data', [])
-    pager = result.get('pager', {})
+    data = result.data
+    if data.get('statusCode') != 200:
+        logger.warning('nepalipaisa API error: %s', data.get('message'))
+        return None
+
+    api_result = data.get('result', {})
+    items = api_result.get('data', [])
+    pager = api_result.get('pager', {})
 
     if not items:
         return None
@@ -73,11 +66,7 @@ async def fetch_ipos_from_nepalipaisa(page: int = 1, per_page: int = 20) -> dict
             units_num = 0
 
         issue_size = f'{units_num:,} shares' if units_num else ''
-
-        if price_str:
-            price_range = f'NPR {price_str}'
-        else:
-            price_range = 'NPR 100'
+        price_range = f'NPR {price_str}' if price_str else 'NPR 100'
 
         open_date_ad = (item.get('openingDateAD') or '').strip()
         open_date_bs = (item.get('openingDateBS') or '').strip()
