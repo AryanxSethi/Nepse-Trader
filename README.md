@@ -4,10 +4,10 @@ A real-time NEPSE stock analysis platform with technical indicators, portfolio t
 
 ## Features
 
-- **Live Market Data** — Real-time prices, indices, gainers/losers from yonepse, NepalStock, and Merolagani
+- **Live Market Data** — Real-time prices, indices, gainers/losers from yonepse and Merolagani
 - **Technical Analysis** — RSI, MACD, SMA, ADX, Bollinger Bands with auto-generated BUY/SELL/HOLD signals
 - **Portfolio Tracker** — Add/manage holdings with live P&L calculation
-- **Stock Comparison** — Compare up to 5 stocks side-by-side with indicators
+- **Stock Comparison** — Compare 2 stocks side-by-side with indicators
 - **Backtesting** — SMA crossover strategy backtester with equity curves
 - **IPO Database** — Paginated IPO listings from nepalipaisa with BS/AD dates
 - **LLM Chat** — Streaming AI assistant using OpenRouter (primary) or local Ollama (fallback)

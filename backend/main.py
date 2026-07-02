@@ -394,7 +394,7 @@ async def market_overview():
                 market_summary["trades"] = int(val) if val else None
             elif "scrips" in detail:
                 market_summary["scrips"] = int(val) if val else None
-            elif "market capitalization" in detail:
+            elif "market capitalization" in detail and "float" not in detail:
                 market_summary["market_cap"] = val
 
         price_map = {p.get("symbol", "").upper(): p for p in m_prices}

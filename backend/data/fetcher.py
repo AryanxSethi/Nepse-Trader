@@ -42,12 +42,12 @@ async def fetch_live_prices() -> list[dict]:
     return []
 
 
-async def fetch_market_summary() -> dict:
+async def fetch_market_summary() -> list | dict:
     result = await _fetch_json("/data/market/summary.json", "yonepse/summary")
-    if result.ok and isinstance(result.data, dict):
+    if result.ok and isinstance(result.data, (dict, list)):
         return result.data
-    logger.warning('fetch_market_summary: %s', result.error or 'non-dict response')
-    return {}
+    logger.warning('fetch_market_summary: %s', result.error or 'unexpected response')
+    return []
 
 
 async def fetch_top_stocks() -> dict:
