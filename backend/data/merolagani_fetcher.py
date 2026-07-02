@@ -1,0 +1,196 @@
+import asyncio
+import logging
+from datetime import datetime, timezone
+
+import httpx
+from bs4 import BeautifulSoup
+
+logger = logging.getLogger('merolagani_fetcher')
+
+MEROLAGANI_BASE = 'https://merolagani.com'
+TIMEOUT_SEC = 15
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+
+
+class MerolaganiFetcher:
+    def __init__(self):
+        self._client: httpx.AsyncClient | None = None
+
+    async def _init_client(self):
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                headers={'User-Agent': USER_AGENT},
+                timeout=TIMEOUT_SEC,
+                follow_redirects=True,
+            )
+
+    async def _get(self, path: str) -> str | None:
+        await self._init_client()
+        try:
+            resp = await self._client.get(f'{MEROLAGANI_BASE}{path}')
+            resp.raise_for_status()
+            return resp.text
+        except Exception as e:
+            logger.debug('Merolagani GET %s failed: %s', path, e)
+            return None
+
+    async def get_live_prices(self) -> list[dict]:
+        html = await self._get('/LatestMarket.aspx')
+        if not html:
+            return []
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table', class_='live-trading')
+        if not table:
+            return []
+        tbody = table.find('tbody')
+        rows = tbody.find_all('tr') if tbody else []
+        prices = []
+        for row in rows:
+            cells = row.find_all('td')
+            if len(cells) >= 6:
+                try:
+                    symbol = cells[0].get_text(strip=True)
+                    ltp_text = cells[1].get_text(strip=True).replace(',', '')
+                    change_text = cells[2].get_text(strip=True).replace('%', '').replace(',', '')
+                    open_text = cells[3].get_text(strip=True).replace(',', '')
+                    high_text = cells[4].get_text(strip=True).replace(',', '')
+                    low_text = cells[5].get_text(strip=True).replace(',', '')
+                    prices.append({
+                        'symbol': symbol,
+                        'ltp': float(ltp_text) if ltp_text else 0,
+                        'percent_change': float(change_text) if change_text else 0,
+                        'open': float(open_text) if open_text else 0,
+                        'high': float(high_text) if high_text else 0,
+                        'low': float(low_text) if low_text else 0,
+                    })
+                except (ValueError, IndexError):
+                    continue
+        return prices
+
+    async def get_market_summary(self) -> dict:
+        html = await self._get('/LatestMarket.aspx')
+        if not html:
+            return {}
+        soup = BeautifulSoup(html, 'html.parser')
+        tables = soup.find_all('table')
+        result = {}
+
+        for t in tables:
+            live = t.get('data-live', '')
+            rows = t.find_all('tr', recursive=False)
+            if not rows or len(rows) < 2:
+                continue
+
+            if live == 'gainers' and 'gainers' not in result:
+                result['gainers'] = self._parse_gainers_losers(rows)
+            elif live == 'losers' and 'losers' not in result:
+                result['losers'] = self._parse_gainers_losers(rows)
+            elif live == 'turnovers' and 'turnovers' not in result:
+                result['turnovers'] = self._parse_turnovers(rows)
+            elif live == 'sectors' and 'sectors' not in result:
+                result['sectors'] = self._parse_sectors(rows)
+
+        return result
+
+    async def get_sectors(self) -> list[dict]:
+        summary = await self.get_market_summary()
+        return summary.get('sectors', [])
+
+    def _parse_gainers_losers(self, rows):
+        items = []
+        for row in rows[1:]:
+            cells = row.find_all('td')
+            if len(cells) >= 7:
+                try:
+                    symbol = cells[0].get_text(strip=True)
+                    ltp_text = cells[1].get_text(strip=True).replace(',', '')
+                    change_text = cells[2].get_text(strip=True).replace('%', '').replace(',', '')
+                    items.append({
+                        'symbol': symbol,
+                        'ltp': float(ltp_text) if ltp_text else 0,
+                        'percent_change': float(change_text) if change_text else 0,
+                    })
+                except (ValueError, IndexError):
+                    continue
+        return items
+
+    def _parse_turnovers(self, rows):
+        items = []
+        for row in rows[1:]:
+            cells = row.find_all('td')
+            if len(cells) >= 3:
+                try:
+                    symbol = cells[0].get_text(strip=True)
+                    turnover_text = cells[1].get_text(strip=True).replace(',', '')
+                    ltp_text = cells[2].get_text(strip=True).replace(',', '')
+                    items.append({
+                        'symbol': symbol,
+                        'turnover': float(turnover_text) if turnover_text else 0,
+                        'ltp': float(ltp_text) if ltp_text else 0,
+                    })
+                except (ValueError, IndexError):
+                    continue
+        return items
+
+    def _parse_sectors(self, rows):
+        items = []
+        for row in rows[1:]:
+            cells = row.find_all('td')
+            if len(cells) >= 2:
+                try:
+                    name = cells[0].get_text(strip=True)
+                    turnover_text = cells[1].get_text(strip=True).replace(',', '')
+                    items.append({
+                        'name': name,
+                        'turnover': float(turnover_text) if turnover_text else 0,
+                    })
+                except ValueError:
+                    continue
+        return items
+
+    async def get_company_detail(self, symbol: str) -> dict:
+        html = await self._get(f'/CompanyDetail.aspx?symbol={symbol.upper()}')
+        if not html:
+            return {}
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table', class_='table-zeromargin')
+        if not table:
+            table = soup.find('table', id=lambda x: x and 'accordion' in x) or soup.find('table', id='accordion')
+        if not table:
+            return {}
+        rows = table.find_all('tr')
+        result = {}
+        for row in rows:
+            th = row.find('th')
+            td = row.find('td')
+            if not th or not td:
+                continue
+            label = th.get_text(strip=True).lower()
+            value = td.get_text(strip=True)
+            if 'sector' in label and 'sector' not in result:
+                result['sector'] = value
+            elif 'shares outstanding' in label:
+                continue
+            elif 'market price' in label:
+                result['market_price'] = value
+            elif '% change' in label:
+                result['percent_change'] = value
+            elif 'last traded on' in label:
+                result['last_traded_on'] = value
+            elif '52 weeks' in label or '52 week' in label:
+                parts = value.replace('-', ' - ').split('-')
+                if len(parts) >= 2:
+                    result['52w_high'] = parts[0].strip()
+                    result['52w_low'] = parts[-1].strip()
+                else:
+                    result['52w_range'] = value
+            elif '120 day average' in label:
+                result['120d_avg'] = value
+            elif '1 year yield' in label:
+                result['1y_yield'] = value
+        return result
+
+    async def stop(self):
+        if self._client:
+            await self._client.aclose()
+            self._client = None

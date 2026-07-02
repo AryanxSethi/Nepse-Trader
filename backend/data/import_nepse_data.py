@@ -1,0 +1,135 @@
+"""
+Import historical OHLC data from Aabishkar2/nepse-data GitHub repo.
+Usage: python -m backend.data.import_nepse_data NABIL
+       python -m backend.data.import_nepse_data --all
+"""
+
+import asyncio
+import csv
+import io
+import sys
+from datetime import date, datetime
+
+import httpx
+
+from database import async_session, init_db
+from models import DailyPrice, Security
+from sqlalchemy import select
+
+
+GITHUB_RAW = "https://raw.githubusercontent.com/Aabishkar2/nepse-data/main/data/company-wise"
+
+
+async def fetch_csv(symbol: str) -> list[dict] | None:
+    url = f"{GITHUB_RAW}/{symbol}.csv"
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            content = resp.text
+    except Exception as e:
+        print(f"[import] Failed to fetch {symbol}: {e}")
+        return None
+
+    reader = csv.DictReader(io.StringIO(content))
+    rows = []
+    for row in reader:
+        date_str = row.get("published_date", "").strip()
+        if not date_str:
+            continue
+        try:
+            parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            try:
+                parsed_date = datetime.strptime(date_str, "%m/%d/%Y").date()
+            except ValueError:
+                continue
+
+        rows.append({
+            "symbol": symbol,
+            "date": parsed_date,
+            "open": _float(row.get("open")),
+            "high": _float(row.get("high")),
+            "low": _float(row.get("low")),
+            "close": _float(row.get("close")),
+            "volume": _int_or_none(row.get("traded_quantity")),
+            "turnover": _float(row.get("traded_amount")),
+        })
+
+    rows.sort(key=lambda r: r["date"])
+    return rows
+
+
+def _float(val: str | None) -> float | None:
+    if val is None:
+        return None
+    try:
+        return float(val.strip())
+    except (ValueError, AttributeError):
+        return None
+
+
+def _int_or_none(val: str | None) -> int | None:
+    if val is None:
+        return None
+    try:
+        return int(float(val.strip()))
+    except (ValueError, AttributeError):
+        return None
+
+
+async def import_symbol(symbol: str) -> int:
+    symbol = symbol.upper().strip()
+    rows = await fetch_csv(symbol)
+    if not rows:
+        return 0
+
+    async with async_session() as session:
+        existing = await session.execute(
+            select(DailyPrice.date).where(DailyPrice.symbol == symbol)
+        )
+        existing_dates = {row[0] for row in existing.all()}
+
+        new_count = 0
+        for r in rows:
+            if r["date"] not in existing_dates:
+                session.add(DailyPrice(**r))
+                new_count += 1
+
+        if new_count:
+            await session.commit()
+
+    print(f"[import] {symbol}: {new_count} new rows (from {len(rows)} fetched)")
+    return new_count
+
+
+async def import_all_symbols():
+    await init_db()
+    async with async_session() as session:
+        result = await session.execute(select(Security.symbol))
+        symbols = [row[0] for row in result.all()]
+
+    total = 0
+    for sym in symbols:
+        count = await import_symbol(sym)
+        total += count
+
+    print(f"[import] Done. {total} total new rows across {len(symbols)} symbols.")
+
+
+async def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    if "--all" in sys.argv or "-a" in sys.argv:
+        await import_all_symbols()
+    elif args:
+        await init_db()
+        for sym in args:
+            await import_symbol(sym)
+    else:
+        print("Usage: python -m backend.data.import_nepse_data SYMBOL [SYMBOL...]")
+        print("       python -m backend.data.import_nepse_data --all")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

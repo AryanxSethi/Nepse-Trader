@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+sqlalchemy
+aiosqlite
+pandas
+numpy
+pandas-ta
+httpx
+rapidfuzz
+beautifulsoup4
+slowapi
+python-dotenv
+python-dateutil

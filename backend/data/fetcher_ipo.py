@@ -1,0 +1,58 @@
+import json
+import logging
+from datetime import datetime, timezone
+from pathlib import Path
+
+from data.nepalipaisa_fetcher import fetch_ipos_from_nepalipaisa
+
+logger = logging.getLogger('fetcher_ipo')
+
+IPO_JSON_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "ipos.json"
+
+
+def _load_static(page: int, per_page: int) -> dict:
+    if not IPO_JSON_PATH.exists():
+        return {'data': [], 'pager': {'pageNo': 1, 'itemsPerPage': per_page, 'totalNextPages': -1, 'totalPages': 1}, '_meta': {'source': 'static', 'updated_at': ''}}
+    try:
+        with open(IPO_JSON_PATH, encoding='utf-8') as f:
+            raw = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning('Failed to load ipos.json: %s', e)
+        return {'data': [], 'pager': {'pageNo': 1, 'itemsPerPage': per_page, 'totalNextPages': -1, 'totalPages': 1}, '_meta': {'source': 'static', 'updated_at': ''}}
+
+    all_items = []
+    for item in raw.get('upcoming', []):
+        all_items.append(item)
+    for item in raw.get('recently_closed', []):
+        item['status'] = 'closed'
+        all_items.append(item)
+
+    all_items.sort(key=lambda x: x.get('ipo_id', 0), reverse=True)
+    total = len(all_items)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_items = all_items[start:end]
+
+    return {
+        'data': page_items,
+        'pager': {
+            'pageNo': page,
+            'itemsPerPage': per_page,
+            'totalNextPages': total_pages - 1,
+            'totalPages': total_pages,
+        },
+        '_meta': {
+            'source': 'static',
+            'updated_at': datetime.now(timezone.utc).isoformat(),
+        },
+    }
+
+
+async def load_ipos(page: int = 1, per_page: int = 20) -> dict:
+    result = await fetch_ipos_from_nepalipaisa(page=page, per_page=per_page)
+    if result and result.get('data'):
+        return result
+
+    logger.info('nepalipaisa returned no data, falling back to static ipos.json')
+    return _load_static(page, per_page)

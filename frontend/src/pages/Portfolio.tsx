@@ -1,0 +1,289 @@
+import { useState, useEffect, useCallback } from 'react'
+import { motion } from 'framer-motion'
+import { PageTransition } from '../components/Navbar'
+import FloatingChat from '../components/FloatingChat'
+import { formatNPR, formatPercent, formatChange } from '../utils/format'
+import {
+  TrendingUpIcon, TrendingDownIcon, CloseIcon,
+} from '../components/Icons'
+
+interface Holding {
+  id: number
+  symbol: string
+  name: string
+  quantity: number
+  avg_cost: number
+  buy_date: string | null
+  notes: string
+  ltp: number | null
+  invested: number
+  current_value: number | null
+  pl: number | null
+  pl_percent: number | null
+}
+
+interface PortfolioData {
+  holdings: Holding[]
+  total_invested: number
+  total_value: number
+  total_pl: number
+  total_pl_percent: number
+}
+
+function AddHoldingModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [symbol, setSymbol] = useState('')
+  const [quantity, setQuantity] = useState('')
+  const [avgCost, setAvgCost] = useState('')
+  const [buyDate, setBuyDate] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async () => {
+    setError('')
+    if (!symbol || !quantity || !avgCost) {
+      setError('Symbol, quantity, and avg cost are required')
+      return
+    }
+    const qty = parseInt(quantity)
+    const cost = parseFloat(avgCost)
+    if (qty <= 0 || cost <= 0) {
+      setError('Quantity and avg cost must be positive')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const params = new URLSearchParams({ symbol: symbol.trim().toUpperCase(), quantity: String(qty), avg_cost: String(cost) })
+      if (buyDate) params.set('buy_date', buyDate)
+      const res = await fetch(`/api/portfolio/holdings?${params}`, { method: 'POST' })
+      if (!res.ok) throw new Error(await res.text())
+      onAdded()
+      onClose()
+    } catch (e: any) {
+      setError(e.message || 'Failed to add holding')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="bg-surface-card border border-border rounded-xl p-5 w-full max-w-sm mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-text">Add Holding</h3>
+          <button onClick={onClose} className="text-text-muted hover:text-text"><CloseIcon size={16} /></button>
+        </div>
+        <div className="space-y-3">
+          <input
+            placeholder="Symbol (e.g. NABIL)"
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value)}
+            className="w-full bg-surface-hover text-text text-sm rounded-lg px-3 py-2 border border-border outline-none"
+          />
+          <input
+            type="number"
+            placeholder="Quantity"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            className="w-full bg-surface-hover text-text text-sm rounded-lg px-3 py-2 border border-border outline-none"
+          />
+          <input
+            type="number"
+            step="0.01"
+            placeholder="Avg Cost (NPR)"
+            value={avgCost}
+            onChange={(e) => setAvgCost(e.target.value)}
+            className="w-full bg-surface-hover text-text text-sm rounded-lg px-3 py-2 border border-border outline-none"
+          />
+          <input
+            type="date"
+            value={buyDate}
+            onChange={(e) => setBuyDate(e.target.value)}
+            className="w-full bg-surface-hover text-text text-sm rounded-lg px-3 py-2 border border-border outline-none"
+          />
+          {error && <p className="text-xs text-red">{error}</p>}
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="w-full bg-accent text-white text-sm font-medium rounded-lg py-2 hover:bg-accent/90 disabled:opacity-50"
+          >
+            {submitting ? 'Adding...' : 'Add'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
+export default function Portfolio() {
+  const [data, setData] = useState<PortfolioData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [showAdd, setShowAdd] = useState(false)
+
+  const fetchPortfolio = useCallback(async () => {
+    try {
+      const res = await fetch('/api/portfolio')
+      if (res.ok) {
+        const d = await res.json()
+        setData(d)
+      }
+    } catch {} finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchPortfolio()
+    const id = setInterval(fetchPortfolio, 30000)
+    return () => clearInterval(id)
+  }, [fetchPortfolio])
+
+  const handleDelete = async (id: number) => {
+    try {
+      await fetch(`/api/portfolio/holdings/${id}`, { method: 'DELETE' })
+      fetchPortfolio()
+    } catch {}
+  }
+
+  if (loading) {
+    return (
+      <PageTransition>
+        <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+          <div className="animate-shimmer h-8 w-32 rounded" />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[1, 2, 3, 4].map(i => <div key={i} className="animate-shimmer h-20 rounded-xl" />)}
+          </div>
+          <div className="animate-shimmer h-64 rounded-xl" />
+        </div>
+      </PageTransition>
+    )
+  }
+
+  const isPositive = (data?.total_pl ?? 0) >= 0
+
+  return (
+    <PageTransition>
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold text-text">Portfolio</h1>
+          <button
+            onClick={() => setShowAdd(true)}
+            className="bg-accent text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-accent/90"
+          >
+            + Add Holding
+          </button>
+        </div>
+
+        {/* Summary bar */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="rounded-xl bg-surface-card border border-border p-3">
+            <p className="text-[11px] text-text-muted">Total Invested</p>
+            <p className="text-lg font-bold text-text">{formatNPR(data?.total_invested)}</p>
+          </div>
+          <div className="rounded-xl bg-surface-card border border-border p-3">
+            <p className="text-[11px] text-text-muted">Current Value</p>
+            <p className="text-lg font-bold text-text">{formatNPR(data?.total_value)}</p>
+          </div>
+          <div className="rounded-xl bg-surface-card border border-border p-3">
+            <p className="text-[11px] text-text-muted">Total P&amp;L</p>
+            <p className={`text-lg font-bold ${isPositive ? 'text-green' : 'text-red'}`}>
+              {formatChange(data?.total_pl)}
+            </p>
+            <p className={`text-xs ${isPositive ? 'text-green' : 'text-red'}`}>
+              {formatPercent(data?.total_pl_percent)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-surface-card border border-border p-3">
+            <p className="text-[11px] text-text-muted">Holdings</p>
+            <p className="text-lg font-bold text-text">{data?.holdings.length ?? 0}</p>
+          </div>
+        </div>
+
+        {/* Holdings table */}
+        <div className="rounded-xl bg-surface-card border border-border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-text-muted text-xs">
+                  <th className="text-left px-4 py-3 font-medium">Symbol</th>
+                  <th className="text-right px-4 py-3 font-medium">Qty</th>
+                  <th className="text-right px-4 py-3 font-medium">Avg Cost</th>
+                  <th className="text-right px-4 py-3 font-medium">Invested</th>
+                  <th className="text-right px-4 py-3 font-medium">LTP</th>
+                  <th className="text-right px-4 py-3 font-medium">Value</th>
+                  <th className="text-right px-4 py-3 font-medium">P&amp;L</th>
+                  <th className="text-right px-4 py-3 font-medium">P&amp;L%</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.holdings ?? []).length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="text-center text-text-muted text-sm py-8">
+                      No holdings yet. Add your first stock.
+                    </td>
+                  </tr>
+                )}
+                {(data?.holdings ?? []).map((h, i) => {
+                  const plPos = (h.pl ?? 0) >= 0
+                  return (
+                    <motion.tr
+                      key={h.id}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.02 }}
+                      className="border-b border-border/50 hover:bg-surface-hover/50 transition-colors"
+                    >
+                      <td className="px-4 py-3">
+                        <span className="font-medium text-text">{h.symbol}</span>
+                        {h.name && <p className="text-[10px] text-text-muted truncate max-w-[120px]">{h.name}</p>}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono-nums text-text">{h.quantity}</td>
+                      <td className="px-4 py-3 text-right font-mono-nums text-text-muted">{formatNPR(h.avg_cost)}</td>
+                      <td className="px-4 py-3 text-right font-mono-nums text-text-muted">{formatNPR(h.invested)}</td>
+                      <td className="px-4 py-3 text-right font-mono-nums text-text">{formatNPR(h.ltp)}</td>
+                      <td className="px-4 py-3 text-right font-mono-nums text-text">{formatNPR(h.current_value)}</td>
+                      <td className={`px-4 py-3 text-right font-mono-nums font-medium ${plPos ? 'text-green' : 'text-red'}`}>
+                        <span className="flex items-center justify-end gap-1">
+                          {h.pl != null && (plPos ? <TrendingUpIcon size={12} /> : <TrendingDownIcon size={12} />)}
+                          {formatChange(h.pl)}
+                        </span>
+                      </td>
+                      <td className={`px-4 py-3 text-right font-mono-nums font-medium ${plPos ? 'text-green' : 'text-red'}`}>
+                        {formatPercent(h.pl_percent)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => handleDelete(h.id)}
+                          className="text-text-muted hover:text-red transition-colors"
+                          title="Remove"
+                        >
+                          <CloseIcon size={14} />
+                        </button>
+                      </td>
+                    </motion.tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <p className="text-[10px] text-text-muted/40 text-center">
+          Holdings update every 30s with live LTP. The stock market involves risk.
+        </p>
+      </div>
+      {showAdd && (
+        <AddHoldingModal
+          onClose={() => setShowAdd(false)}
+          onAdded={fetchPortfolio}
+        />
+      )}
+      <FloatingChat />
+    </PageTransition>
+  )
+}
