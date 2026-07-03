@@ -1,6 +1,8 @@
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 import httpx
 from bs4 import BeautifulSoup
@@ -53,6 +55,20 @@ class MerolaganiFetcher:
             return []
         tbody = table.find('tbody')
         rows = tbody.find_all('tr') if tbody else []
+
+        turnover_map: dict[str, float] = {}
+        for t in soup.find_all('table'):
+            if t.get('data-live', '') == 'turnovers':
+                for tr in t.find_all('tr', recursive=False)[1:]:
+                    cells = tr.find_all('td')
+                    if len(cells) >= 2:
+                        sym = cells[0].get_text(strip=True)
+                        txt = cells[1].get_text(strip=True).replace(',', '')
+                        try:
+                            turnover_map[sym] = float(txt) if txt else 0
+                        except ValueError:
+                            pass
+
         prices = []
         for row in rows:
             cells = row.find_all('td')
@@ -71,6 +87,7 @@ class MerolaganiFetcher:
                         'open': float(open_text) if open_text else 0,
                         'high': float(high_text) if high_text else 0,
                         'low': float(low_text) if low_text else 0,
+                        'turnover': turnover_map.get(symbol, 0),
                     })
                 except (ValueError, IndexError):
                     continue
@@ -100,6 +117,81 @@ class MerolaganiFetcher:
                 result['sectors'] = self._parse_sectors(rows)
 
         return result
+
+    async def get_live_index(self) -> dict | None:
+        if circuit_breaker.is_open('merolagani'):
+            return None
+        try:
+            conn_data = json.dumps([{'name': 'stocktickerhub'}])
+
+            def _signalr() -> dict | None:
+                with httpx.Client(
+                    headers={'User-Agent': USER_AGENT},
+                    timeout=20, verify=False,
+                ) as c:
+                    c.get(f'{MEROLAGANI_BASE}/LatestMarket.aspx')
+                    neg = c.post(
+                        f'{MEROLAGANI_BASE}/signalr/negotiate',
+                        data={'connectionData': conn_data},
+                    )
+                    if neg.status_code != 200:
+                        return None
+                    neg_data = neg.json()
+                    ct = neg_data['ConnectionToken']
+                    proto = neg_data.get('ProtocolVersion', '1.2')
+
+                    qs = (
+                        f'transport=longPolling'
+                        f'&connectionToken={quote(ct)}'
+                        f'&connectionData={quote(conn_data)}'
+                        f'&clientProtocol={quote(proto)}'
+                    )
+
+                    for _ in range(6):
+                        try:
+                            sr = c.get(
+                                f'{MEROLAGANI_BASE}/signalr/start?{qs}',
+                                timeout=20,
+                            )
+                            if sr.status_code == 200:
+                                return sr.json()
+                        except httpx.TimeoutException:
+                            import time as _t
+                            _t.sleep(1)
+                            continue
+                    return None
+
+            result_data = await asyncio.to_thread(_signalr)
+            if not result_data:
+                return None
+
+            for msg in result_data.get('M', []):
+                args = msg.get('A', [])
+                if args and isinstance(args[0], dict):
+                    raw_indices = args[0].get('Indices', {})
+                    if isinstance(raw_indices, dict):
+                        out: dict[str, dict] = {}
+                        for name, entry in raw_indices.items():
+                            if isinstance(entry, dict):
+                                v = entry.get('v')
+                                pc = entry.get('pc', 0)
+                                change = round(v * pc / 100, 2) if v and pc else None
+                                out[name] = {
+                                    'name': name,
+                                    'currentValue': v,
+                                    'change': change,
+                                    'perChange': pc,
+                                }
+                        if out:
+                            circuit_breaker.record_success('merolagani')
+                            return out
+
+            circuit_breaker.record_success('merolagani')
+            return None
+        except Exception as e:
+            logger.debug('Merolagani SignalR index poll failed: %s', e)
+            circuit_breaker.record_failure('merolagani')
+            return None
 
     async def get_sectors(self) -> list[dict]:
         summary = await self.get_market_summary()

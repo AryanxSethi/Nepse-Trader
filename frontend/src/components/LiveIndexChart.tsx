@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createChart, ColorType, LineSeries } from 'lightweight-charts'
+import { useMarketStatus } from '../hooks/useMarketStatus'
 import { formatNPR } from '../utils/format'
 
 interface Props {
@@ -89,8 +90,11 @@ export default function LiveIndexChart({ className = '' }: Props) {
     }
   }, [])
 
+  const marketStatus = useMarketStatus()
+
   useEffect(() => {
     let cancelled = false
+    let id: ReturnType<typeof setInterval> | null = null
     const fetchHistory = async () => {
       try {
         const res = await fetch('/api/market/index-history')
@@ -115,9 +119,11 @@ export default function LiveIndexChart({ className = '' }: Props) {
       } catch {}
     }
     fetchHistory()
-    const id = setInterval(fetchHistory, 30000)
-    return () => { cancelled = true; clearInterval(id) }
-  }, [])
+    if (marketStatus.is_open) {
+      id = setInterval(fetchHistory, 15000)
+    }
+    return () => { cancelled = true; if (id) clearInterval(id) }
+  }, [marketStatus.is_open])
 
   if (currentValue === null) return null
 

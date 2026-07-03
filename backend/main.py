@@ -42,10 +42,11 @@ from data.cache import (
     get_market_cache, set_market_cache,
     get_ipo_cache, set_ipo_cache,
     prewarm_caches, persist_caches_on_exit,
+    persist_live_cache, load_live_cache,
 )
 
 LIVE_CACHE = {"data": [], "timestamp": None, "index_history": [], "current_index": None,
-               "index_hourly": [], "index_30s": []}
+               "current_indices": None, "index_hourly": [], "index_30s": []}
 
 scheduler = MarketScheduler()
 nepse_fetcher = NepalStockFetcher()
@@ -117,45 +118,79 @@ async def seed_daily_history(cache: dict):
         logger.info("Seeded index_history with %d daily points from DB", len(history))
 
 
-async def start_index_polling(cache: dict):
+async def start_index_polling(cache: dict, ever_had_signalr: bool = False):
     async def _poll():
+        nonlocal ever_had_signalr
+        is_open = False
         while True:
             try:
-                yonepse_indices = await fetch_indices()
-                if yonepse_indices:
-                    nepse_val = None
-                    for idx in yonepse_indices:
-                        name = idx.get('index', '').upper()
-                        if name == 'NEPSE INDEX' or name == 'NEPSE':
-                            nepse_val = idx
-                            break
-                    if nepse_val:
-                        now_utc = datetime.now(timezone.utc)
-                        now_npt = now_utc + timedelta(hours=5, minutes=45)
-                        val = nepse_val.get('currentValue')
+                status = get_market_status()
+                is_open = status.get('is_open', False)
+            except Exception:
+                is_open = False
 
-                        tail = cache.setdefault('index_30s', [])
-                        if not tail or tail[-1].get('value') != val:
-                            tail.append({'time': _to_timestamp(now_utc), 'value': val})
-                            if len(tail) > 120:
-                                cache['index_30s'] = tail[-120:]
+            try:
+                all_indices = None
+                if is_open:
+                    try:
+                        all_indices = await merolagani_fetcher.get_live_index()
+                        if all_indices:
+                            ever_had_signalr = True
+                    except Exception:
+                        logger.warning("Merolagani SignalR index poll failed")
 
-                        hourly = cache.setdefault('index_hourly', [])
-                        hour_key = _to_timestamp(now_npt.replace(minute=0, second=0, microsecond=0))
-                        if not hourly or hourly[-1].get('time') != hour_key:
-                            hourly.append({'time': hour_key, 'value': val})
+                if not all_indices and not ever_had_signalr:
+                    yonepse_indices = await fetch_indices()
+                    if yonepse_indices:
+                        all_indices = {}
+                        for idx in yonepse_indices:
+                            name = idx.get('index', '')
+                            key = 'NEPSE' if name.upper() == 'NEPSE INDEX' else name
+                            all_indices[key] = {
+                                'name': key,
+                                'currentValue': idx.get('currentValue'),
+                                'change': idx.get('change'),
+                                'perChange': idx.get('perChange'),
+                            }
+
+                if all_indices:
+                    now_utc = datetime.now(timezone.utc)
+                    now_npt = now_utc + timedelta(hours=5, minutes=45)
+
+                    vals: dict[str, float | None] = {}
+                    for name, entry in all_indices.items():
+                        vals[name] = entry.get('currentValue')
+
+                    tail = cache.setdefault('index_30s', [])
+                    prev = tail[-1] if tail else None
+                    if is_open or not prev:
+                        prev_vals = prev.get('values', {}) if prev else {}
+                        if any(vals.get(k) != prev_vals.get(k) for k in vals):
+                            tail.append({'time': _to_timestamp(now_utc), 'values': dict(vals)})
+                            if len(tail) > 480:
+                                cache['index_30s'] = tail[-480:]
+
+                    hourly = cache.setdefault('index_hourly', [])
+                    hour_key = _to_timestamp(now_npt.replace(minute=0, second=0, microsecond=0))
+                    if not hourly or hourly[-1].get('time') != hour_key:
+                        hourly.append({'time': hour_key, 'values': dict(vals)})
+                        nv = vals.get('NEPSE')
+                        if nv is not None:
                             logger.info("Index hourly point: %s = %.2f",
-                                        now_npt.strftime('%Y-%m-%d %H:00'), val)
+                                        now_npt.strftime('%Y-%m-%d %H:00'), nv)
 
-                        cache['current_index'] = {
-                            'name': 'NEPSE Index',
-                            'currentValue': val,
-                            'change': nepse_val.get('change'),
-                            'perChange': nepse_val.get('perChange'),
-                        }
+                    cache['current_indices'] = all_indices
+                    n = all_indices.get('NEPSE', {})
+                    cache['current_index'] = {
+                        'name': 'NEPSE Index',
+                        'currentValue': n.get('currentValue'),
+                        'change': n.get('change'),
+                        'perChange': n.get('perChange'),
+                    } if n.get('currentValue') is not None else None
             except Exception as e:
                 logger.warning('Index poll failed: %s', e)
-            await asyncio.sleep(30)
+
+            await asyncio.sleep(15 if is_open else 300)
     asyncio.create_task(_poll())
 
 PAGE_MAP = {
@@ -202,10 +237,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Failed to load CSS salts: %s", e)
     await prewarm_caches()
+    disk_live = load_live_cache()
+    for k, v in disk_live.items():
+        if v is not None:
+            LIVE_CACHE[k] = v
+    has_signalr = bool(LIVE_CACHE.get('current_indices'))
     scheduler.start()
     await seed_daily_history(LIVE_CACHE)
-    await start_index_polling(LIVE_CACHE)
+    await start_index_polling(LIVE_CACHE, has_signalr)
     yield
+    persist_live_cache(LIVE_CACHE)
     await persist_caches_on_exit()
     await merolagani_fetcher.stop()
     await scheduler.stop()
@@ -362,10 +403,9 @@ def _enrich_item(item: dict, price_map: dict) -> dict:
 @app.get("/api/market/overview")
 async def market_overview():
     try:
-        merolagani_prices, merolagani_summary, yonepse_indices, summary_resp = await asyncio.gather(
+        merolagani_prices, merolagani_summary, summary_resp = await asyncio.gather(
             merolagani_fetcher.get_live_prices(),
             merolagani_fetcher.get_market_summary(),
-            fetch_indices(),
             fetch_market_summary(),
             return_exceptions=True,
         )
@@ -374,14 +414,18 @@ async def market_overview():
         m_summary = {} if isinstance(merolagani_summary, Exception) else (merolagani_summary or {})
         summary_list = [] if isinstance(summary_resp, Exception) else (summary_resp or [])
 
+        current_indices = LIVE_CACHE.get('current_indices')
         indices_data = []
-        if not isinstance(yonepse_indices, Exception) and yonepse_indices:
-            for idx in yonepse_indices:
+        if current_indices:
+            for entry in current_indices.values():
+                n = (entry.get("name") or "").lower()
+                if n not in ('nepse', 'nepse index', 'sensitive index'):
+                    continue
                 indices_data.append({
-                    "name": idx.get("index", ""),
-                    "value": idx.get("currentValue"),
-                    "change": idx.get("change"),
-                    "percent_change": idx.get("perChange"),
+                    "name": entry.get("name", ""),
+                    "value": entry.get("currentValue"),
+                    "change": entry.get("change"),
+                    "percent_change": entry.get("perChange"),
                 })
 
         market_summary = {"turnover": None, "trades": None, "scrips": None, "market_cap": None}
@@ -414,7 +458,10 @@ async def market_overview():
             losers.reverse()
 
         if not active and m_prices:
-            active = [{"symbol": p.get("symbol", ""), "ltp": p.get("ltp"), "turnover": p.get("turnover")} for p in m_prices[:10]]
+            with_turnover = [p for p in m_prices if p.get('turnover', 0) > 0]
+            if with_turnover:
+                with_turnover.sort(key=lambda p: p.get('turnover', 0), reverse=True)
+            active = [{"symbol": p.get("symbol", ""), "ltp": p.get("ltp"), "turnover": p.get("turnover")} for p in (with_turnover or m_prices[:10])]
 
         tops: dict | None = None
         if not gainers:
@@ -468,44 +515,53 @@ async def market_index_history():
                 merged.append(p)
     if tail:
         hourly_ts = hourly[-1].get('time', 0) if hourly else 0
-        has_tail_today = any(p.get('time', 0) > hourly_ts for p in tail[-6:])
-        if has_tail_today:
-            merged.extend(tail[-3:])
+        for p in tail:
+            if p.get('time', 0) > hourly_ts:
+                merged.append(p)
 
     return {
         "points": merged,
         "current": LIVE_CACHE.get("current_index"),
+        "snapshots": tail[-60:] if tail else [],
+        "indices": LIVE_CACHE.get("current_indices"),
     }
 
 
 @app.get("/api/market/live")
 async def market_live():
     try:
-        prices_resp, summary_resp, indices_resp = await asyncio.gather(
+        prices_resp, summary_resp = await asyncio.gather(
             merolagani_fetcher.get_live_prices(),
             merolagani_fetcher.get_market_summary(),
-            fetch_indices(),
             return_exceptions=True,
         )
         prices = [] if isinstance(prices_resp, Exception) else (prices_resp or [])
         summary = {} if isinstance(summary_resp, Exception) else (summary_resp or {})
-        indices = [] if isinstance(indices_resp, Exception) else (indices_resp or [])
 
+        current_indices = LIVE_CACHE.get('current_indices')
         indices_data = []
-        for idx in indices:
-            indices_data.append({
-                "name": idx.get("index", ""),
-                "value": idx.get("currentValue"),
-                "change": idx.get("change"),
-                "percent_change": idx.get("perChange"),
-            })
+        if current_indices:
+            for entry in current_indices.values():
+                n = (entry.get("name") or "").lower()
+                if n not in ('nepse', 'nepse index', 'sensitive index'):
+                    continue
+                indices_data.append({
+                    "name": entry.get("name", ""),
+                    "value": entry.get("currentValue"),
+                    "change": entry.get("change"),
+                    "percent_change": entry.get("perChange"),
+                })
+
+        turnovers = summary.get('turnovers', [])
+        if turnovers:
+            turnovers.sort(key=lambda t: t.get('turnover', 0), reverse=True)
 
         return {
             "indices": indices_data,
             "prices": prices,
             "gainers": summary.get('gainers', []),
             "losers": summary.get('losers', []),
-            "turnovers": summary.get('turnovers', []),
+            "turnovers": turnovers,
             "sectors": summary.get('sectors', []),
         }
     except Exception as e:

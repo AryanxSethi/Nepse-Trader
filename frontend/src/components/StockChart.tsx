@@ -69,13 +69,20 @@ export default function StockChart({ data, indicators, height = 420 }: Props) {
         return
       }
 
-      const candleData = validData.map((d) => ({
-        time: d.date,
-        open: d.open ?? d.close,
-        high: d.high ?? d.close,
-        low: d.low ?? d.close,
-        close: d.close,
-      }))
+      const candleData = validData.map((d, i, arr) => {
+        const item: Record<string, any> = {
+          time: d.date,
+          open: d.open ?? d.close,
+          high: d.high ?? d.close,
+          low: d.low ?? d.close,
+          close: d.close,
+        }
+        if (i === arr.length - 1 && i > 0) {
+          const prevClose = arr[i - 1].close
+          item.color = d.close >= prevClose ? '#22c55e' : '#ef4444'
+        }
+        return item
+      })
 
       const lineData = validData.map((d) => ({
         time: d.date,

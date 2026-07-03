@@ -9,7 +9,8 @@ import { SkeletonCard } from '../components/Skeleton'
 import { useMarketOverview } from '../hooks/useStockData'
 import { useMarketStatus } from '../hooks/useMarketStatus'
 import { PageTransition } from '../components/Navbar'
-import { WarningIcon, TrendingUpIcon, ChartIcon, ArrowRightIcon } from '../components/Icons'
+import { formatNPR, formatChange } from '../utils/format'
+import { WarningIcon, TrendingUpIcon, TrendingDownIcon, ChartIcon, ArrowRightIcon } from '../components/Icons'
 
 function timeAgo(iso: string | null): string {
   if (!iso) return ''
@@ -55,6 +56,24 @@ export default function Home() {
 
         {!isLoading && !error && (
           <LiveIndexChart />
+        )}
+
+        {data?.indices && data.indices.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-2 gap-3 max-w-md mx-auto">
+            {data.indices.filter((idx: { name: string }) => {
+              const n = idx.name.toLowerCase()
+              return n === 'nepse' || n === 'nepse index' || n === 'sensitive index'
+            }).map((idx: { name: string; value: number; change: number; percent_change: number }) => (
+              <div key={idx.name} className="rounded-xl bg-surface-card border border-border p-3">
+                <p className="text-[11px] text-text-muted truncate">{idx.name}</p>
+                <p className="text-lg font-bold text-text mt-1">{formatNPR(idx.value, 2)}</p>
+                <p className={`text-xs font-medium mt-0.5 ${(idx.change ?? 0) >= 0 ? 'text-green' : 'text-red'}`}>
+                  {(idx.change ?? 0) >= 0 ? <TrendingUpIcon size={12} className="inline mr-0.5" /> : <TrendingDownIcon size={12} className="inline mr-0.5" />}
+                  {formatChange(idx.change)}
+                </p>
+              </div>
+            ))}
+          </div>
         )}
 
         {data?.summary && (

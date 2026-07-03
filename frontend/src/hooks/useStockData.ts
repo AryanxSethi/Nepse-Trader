@@ -5,7 +5,7 @@ const API = '/api'
 
 export function useMarketOverview() {
   const { is_open } = useMarketStatus()
-  const interval = is_open ? 30_000 : 3_600_000
+  const interval = is_open ? 15_000 : false
 
   return useQuery({
     queryKey: ['market-overview'],
@@ -20,7 +20,7 @@ export function useMarketOverview() {
 
 export function useStockHistory(symbol: string, start: string, end: string) {
   const { is_open } = useMarketStatus()
-  const interval = is_open ? 60_000 : 3_600_000
+  const interval = is_open ? 60_000 : false
 
   return useQuery({
     queryKey: ['stock-history', symbol, start, end],
@@ -50,7 +50,7 @@ export function useSearch(query: string) {
 
 export function useSignals(type?: string) {
   const { is_open } = useMarketStatus()
-  const interval = is_open ? 120_000 : 3_600_000
+  const interval = is_open ? 120_000 : false
 
   return useQuery({
     queryKey: ['signals', type],

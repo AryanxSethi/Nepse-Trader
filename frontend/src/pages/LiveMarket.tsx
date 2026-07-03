@@ -1,10 +1,12 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { createChart, ColorType, LineSeries } from 'lightweight-charts'
+import { useMarketStatus } from '../hooks/useMarketStatus'
 import { PageTransition } from '../components/Navbar'
 import FloatingChat from '../components/FloatingChat'
 import ErrorBanner from '../components/ErrorBanner'
 import RefreshIndicator from '../components/RefreshIndicator'
-import { TrendingUpIcon, TrendingDownIcon, SearchIcon } from '../components/Icons'
+import { TrendingUpIcon, TrendingDownIcon, SearchIcon, ChartIcon } from '../components/Icons'
 import { formatNPR, formatPercent, formatChange } from '../utils/format'
 
 interface IndexData {
@@ -38,6 +40,95 @@ export default function LiveMarket() {
   const [sortKey, setSortKey] = useState<SortKey>('turnover')
   const [sortAsc, setSortAsc] = useState(false)
 
+  const [snapshots, setSnapshots] = useState<{ time: number; values: Record<string, number> }[]>([])
+  const chartRef = useRef<HTMLDivElement>(null)
+  const chartApiRef = useRef<ReturnType<typeof createChart> | null>(null)
+  const nepseSeriesRef = useRef<ReturnType<ReturnType<typeof createChart>['addSeries']> | null>(null)
+  const sensSeriesRef = useRef<ReturnType<ReturnType<typeof createChart>['addSeries']> | null>(null)
+
+  const marketStatus = useMarketStatus()
+
+  useEffect(() => {
+    let id: ReturnType<typeof setInterval> | null = null
+    const fetchSnapshots = async () => {
+      try {
+        const res = await fetch('/api/market/index-history')
+        if (res.ok) {
+          const json = await res.json()
+          if (json.snapshots) setSnapshots(json.snapshots)
+        }
+      } catch { /* ignore */ }
+    }
+    fetchSnapshots()
+    if (marketStatus.is_open) {
+      id = setInterval(fetchSnapshots, 15000)
+    }
+    return () => { if (id) clearInterval(id) }
+  }, [marketStatus.is_open])
+
+  useEffect(() => {
+    if (!chartRef.current || snapshots.length < 2) return
+    if (!chartApiRef.current) {
+      const chart = createChart(chartRef.current, {
+        width: chartRef.current.clientWidth,
+        height: 160,
+        layout: {
+          background: { type: ColorType.Solid, color: 'transparent' },
+          textColor: '#94a3b8',
+          fontSize: 10,
+        },
+        grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+        rightPriceScale: { visible: false },
+        timeScale: {
+          visible: true,
+          timeVisible: true,
+          secondsVisible: false,
+          borderVisible: false,
+          tickMarkFormatter: (time: number) => {
+            const d = new Date(time * 1000)
+            const nptMs = time * 1000 + (5 * 3600 + 45 * 60) * 1000
+            const npt = new Date(nptMs)
+            return npt.getUTCHours().toString().padStart(2, '0') + ':' +
+                   npt.getUTCMinutes().toString().padStart(2, '0')
+          },
+        },
+        crosshair: { vertLine: { visible: false }, horzLine: { visible: false } },
+        handleScroll: false,
+        handleScale: false,
+      })
+      chartApiRef.current = chart
+      nepseSeriesRef.current = chart.addSeries(LineSeries, {
+        color: '#06b6d4',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      })
+      sensSeriesRef.current = chart.addSeries(LineSeries, {
+        color: '#f59e0b',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      })
+      const handleResize = () => {
+        if (chartRef.current && chartApiRef.current) {
+          chartApiRef.current.applyOptions({ width: chartRef.current.clientWidth })
+        }
+      }
+      window.addEventListener('resize', handleResize)
+      return () => window.removeEventListener('resize', handleResize)
+    }
+  }, [snapshots.length])
+
+  useEffect(() => {
+    if (!nepseSeriesRef.current || !sensSeriesRef.current || snapshots.length < 2) return
+    const pts = snapshots.map(s => ({ time: s.time as any, value: s.values['NEPSE'] ?? 0 }))
+    nepseSeriesRef.current.setData(pts as any)
+    const sensPts = snapshots.map(s => ({ time: s.time as any, value: s.values['Sensitive Index'] ?? 0 }))
+    sensSeriesRef.current.setData(sensPts as any)
+  }, [snapshots])
+
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch('/api/market/live')
@@ -59,9 +150,12 @@ export default function LiveMarket() {
 
   useEffect(() => {
     fetchData()
-    const id = setInterval(fetchData, 30000)
-    return () => clearInterval(id)
-  }, [fetchData])
+    let id: ReturnType<typeof setInterval> | null = null
+    if (marketStatus.is_open) {
+      id = setInterval(fetchData, 15000)
+    }
+    return () => { if (id) clearInterval(id) }
+  }, [fetchData, marketStatus.is_open])
 
   const filtered = useMemo(() => {
     let items = prices
@@ -121,6 +215,15 @@ export default function LiveMarket() {
           <RefreshIndicator fetchedAt={fetchedAt} />
         </div>
 
+        {!marketStatus.is_open && !loading && (
+          <div className="rounded-xl bg-amber/10 border border-amber/20 p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-medium text-amber">Market Closed</span>
+              <span className="text-[10px] text-text-muted">Last updated: {fetchedAt ? new Date(fetchedAt).toLocaleTimeString() : '\u2014'}</span>
+            </div>
+          </div>
+        )}
+
         {error && <ErrorBanner message={error} onRetry={fetchData} />}
 
         {indices.length > 0 && (
@@ -134,6 +237,18 @@ export default function LiveMarket() {
                 </p>
               </div>
             ))}
+          </div>
+        )}
+
+        {snapshots.length >= 2 && (
+          <div className="rounded-xl bg-surface-card border border-border p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <ChartIcon size={16} className="text-accent" />
+              <span className="text-xs font-semibold text-text-muted">NEPSE vs Sensitive Index</span>
+              <span className="text-[10px] text-cyan ml-2">NEPSE</span>
+              <span className="text-[10px] text-amber">Sensitive</span>
+            </div>
+            <div ref={chartRef} className="w-full" />
           </div>
         )}
 

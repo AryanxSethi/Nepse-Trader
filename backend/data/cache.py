@@ -58,12 +58,15 @@ def _load_from_disk(name: str):
 
 
 def get_market_cache():
-    if not _market_cache:
+    data = _market_cache.get('data')
+    ts = _market_cache.get('timestamp')
+    if data is None:
         disk = _load_from_disk('market')
         if disk:
             _market_cache['data'] = disk.get('data', [])
             _market_cache['timestamp'] = disk.get('timestamp')
-    return _market_cache.get('data', []), _market_cache.get('timestamp')
+            return disk.get('data', []), disk.get('timestamp')
+    return data or [], ts
 
 
 def set_market_cache(data, timestamp: str | None = None):
@@ -97,6 +100,19 @@ def data_cache_get(key: str) -> str | None:
 
 def data_cache_set(key: str, val: str) -> None:
     _data_cache[key] = (val, time_module.time())
+
+
+LIVE_CACHE_KEYS = ['current_indices', 'current_index', 'index_30s', 'index_hourly', 'index_history']
+
+
+def persist_live_cache(live_cache: dict):
+    data = {k: live_cache.get(k) for k in LIVE_CACHE_KEYS if k in live_cache}
+    _persist('live_cache', data)
+
+
+def load_live_cache() -> dict:
+    disk = _load_from_disk('live_cache')
+    return disk if isinstance(disk, dict) else {}
 
 
 async def prewarm_caches():
