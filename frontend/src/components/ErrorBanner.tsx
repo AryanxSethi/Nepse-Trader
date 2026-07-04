@@ -11,7 +11,7 @@ export default function ErrorBanner({ message, onRetry, onDismiss }: ErrorBanner
     <div className="flex items-start gap-3 rounded-xl border border-red/30 bg-red/5 p-4" role="alert">
       <WarningIcon size={18} className="mt-0.5 shrink-0 text-red" />
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-red-light">{message}</p>
+        <p className="text-sm text-red">{message}</p>
         {onRetry && (
           <button
             onClick={onRetry}

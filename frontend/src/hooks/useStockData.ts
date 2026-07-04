@@ -35,25 +35,12 @@ export function useStockHistory(symbol: string, start: string, end: string) {
   })
 }
 
-export function useSearch(query: string) {
-  return useQuery({
-    queryKey: ['search', query],
-    queryFn: async () => {
-      if (!query.trim()) return { results: [], suggestions: [] }
-      const res = await fetch(`${API}/search?query=${encodeURIComponent(query)}`)
-      if (!res.ok) throw new Error('Search failed')
-      return res.json()
-    },
-    enabled: query.length > 0,
-  })
-}
-
 export function useSignals(type?: string) {
   const { is_open } = useMarketStatus()
   const interval = is_open ? 120_000 : false
 
   return useQuery({
-    queryKey: ['signals', type],
+    queryKey: ['signals', type || 'all'],
     queryFn: async () => {
       const params = type ? `?signal_type=${type}` : ''
       const res = await fetch(`${API}/signals${params}`)

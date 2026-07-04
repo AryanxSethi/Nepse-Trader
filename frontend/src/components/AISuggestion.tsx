@@ -18,6 +18,8 @@ export default function AISuggestion({ signal, indicators }: Props) {
     )
   }
 
+  const hasMA = indicators?.ma5_signal || indicators?.ma20_signal || indicators?.ma180_signal
+
   return (
     <div className="rounded-xl bg-surface-card border border-border overflow-hidden">
       <button
@@ -49,31 +51,59 @@ export default function AISuggestion({ signal, indicators }: Props) {
             className="px-4 pb-3 space-y-2"
           >
             {indicators && (
-              <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="grid grid-cols-4 gap-1.5 text-[11px]">
                 {indicators.rsi != null && (
-                  <div className="bg-surface-hover rounded-lg p-2">
-                    <span className="text-text-muted">RSI</span>
-                    <p className="text-text font-medium">{indicators.rsi}</p>
+                  <div className="bg-surface-hover rounded-lg p-1.5">
+                    <span className="text-text-muted text-[10px]">RSI</span>
+                    <p className="text-text font-semibold">{indicators.rsi}</p>
                   </div>
                 )}
                 {indicators.trend != null && (
-                  <div className="bg-surface-hover rounded-lg p-2">
-                    <span className="text-text-muted">Trend</span>
-                    <p className={`font-medium flex items-center gap-1 ${
+                  <div className="bg-surface-hover rounded-lg p-1.5">
+                    <span className="text-text-muted text-[10px]">Trend</span>
+                    <p className={`font-semibold flex items-center gap-1 ${
                       indicators.trend === 'uptrend' ? 'text-green' :
                       indicators.trend === 'downtrend' ? 'text-red' : 'text-yellow'
                     }`}>
-                      {indicators.trend === 'uptrend' ? <ArrowUpIcon size={12} /> :
-                       indicators.trend === 'downtrend' ? <ArrowDownIcon size={12} /> : null}
+                      {indicators.trend === 'uptrend' ? <ArrowUpIcon size={10} /> :
+                       indicators.trend === 'downtrend' ? <ArrowDownIcon size={10} /> : null}
                       {indicators.trend === 'uptrend' ? 'Up' :
                        indicators.trend === 'downtrend' ? 'Down' : 'Sideways'}
                     </p>
                   </div>
                 )}
                 {indicators.adx != null && (
-                  <div className="bg-surface-hover rounded-lg p-2">
-                    <span className="text-text-muted">ADX</span>
-                    <p className="text-text font-medium">{indicators.adx}</p>
+                  <div className="bg-surface-hover rounded-lg p-1.5">
+                    <span className="text-text-muted text-[10px]">ADX</span>
+                    <p className="text-text font-semibold">{indicators.adx}</p>
+                  </div>
+                )}
+                {hasMA && (
+                  <div className="bg-surface-hover rounded-lg p-1.5">
+                    <span className="text-text-muted text-[10px]">MA Signal</span>
+                    <div className="space-y-0.5 mt-0.5">
+                      {indicators.ma5_signal != null && (
+                        <p className={`text-[10px] font-medium ${
+                          indicators.ma5_signal === 'BULLISH' ? 'text-green' : indicators.ma5_signal === 'BEARISH' ? 'text-red' : 'text-yellow'
+                        }`}>
+                          MA5 {indicators.ma5_signal}
+                        </p>
+                      )}
+                      {indicators.ma20_signal != null && (
+                        <p className={`text-[10px] font-medium ${
+                          indicators.ma20_signal === 'BULLISH' ? 'text-green' : indicators.ma20_signal === 'BEARISH' ? 'text-red' : 'text-yellow'
+                        }`}>
+                          MA20 {indicators.ma20_signal}
+                        </p>
+                      )}
+                      {indicators.ma180_signal != null && (
+                        <p className={`text-[10px] font-medium ${
+                          indicators.ma180_signal === 'BULLISH' ? 'text-green' : indicators.ma180_signal === 'BEARISH' ? 'text-red' : 'text-yellow'
+                        }`}>
+                          MA180 {indicators.ma180_signal}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -81,9 +111,12 @@ export default function AISuggestion({ signal, indicators }: Props) {
             {signal?.reason && (
               <p className="text-xs text-text-muted leading-relaxed">{signal.reason}</p>
             )}
-            <p className="text-[10px] text-text-muted/40 pt-1 flex items-center gap-1">
-              <InfoIcon size={10} /> Based on technical indicators. Not financial advice.
-            </p>
+            <div className="rounded-lg bg-yellow/10 border border-yellow/20 p-2 flex items-start gap-1.5">
+              <InfoIcon size={12} className="text-yellow shrink-0 mt-0.5" />
+              <p className="text-[10px] text-yellow font-medium leading-relaxed">
+                This analysis is generated by automated algorithms and may not be accurate. <strong>Not financial advice.</strong>
+              </p>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -92,7 +92,6 @@ async def refresh_all(force_status: bool = False):
 class MarketScheduler:
     def __init__(self):
         self._task: asyncio.Task | None = None
-        self._task: asyncio.Task | None = None
         self._last_price_refresh: datetime | None = None
         self._last_summary_refresh: datetime | None = None
         self._consecutive_failures = 0

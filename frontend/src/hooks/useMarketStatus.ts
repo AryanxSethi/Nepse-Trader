@@ -46,9 +46,9 @@ function computeLocalStatus(): MarketStatus {
 export function useMarketStatus() {
   const [status, setStatus] = useState<MarketStatus>(computeLocalStatus)
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/market/status')
+      const res = await fetch('/api/market/status', { signal })
       if (res.ok) {
         const data = await res.json()
         setStatus(data)
@@ -61,16 +61,18 @@ export function useMarketStatus() {
   }, [])
 
   useEffect(() => {
-    refresh()
-    const interval = setInterval(refresh, 60000)
-    return () => clearInterval(interval)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 5000)
+    refresh(controller.signal).finally(() => clearTimeout(timeout))
+    const interval = setInterval(() => {
+      const c = new AbortController()
+      const t = setTimeout(() => c.abort(), 5000)
+      refresh(c.signal).finally(() => clearTimeout(t))
+    }, 60000)
+    return () => { clearInterval(interval); controller.abort() }
   }, [refresh])
 
   return status
 }
 
-export function useAutoRefresh(enabled: boolean, openInterval = 60000, closedInterval = 300000) {
-  const status = useMarketStatus()
-  const interval = status.is_open ? openInterval : closedInterval
-  return { ...status, isPaused: !enabled, interval }
-}
+

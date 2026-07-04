@@ -1,3 +1,4 @@
+import logging
 from datetime import date, timedelta
 import httpx
 from sqlalchemy import select, func
@@ -5,6 +6,8 @@ from sqlalchemy import select, func
 from database import async_session
 from models import DailyPrice
 from analysis.signals import generate_signals
+
+logger = logging.getLogger('updater')
 
 
 def _parse_series_entry(entry: list) -> dict | None:
@@ -91,7 +94,8 @@ async def update_daily_prices(target_date: date | None = None) -> int:
                 
                 await session.commit()
     
-    except Exception:
+    except Exception as e:
+        logger.error("update_daily_prices(%s) failed: %s", target_date, e)
         return 0
     
     return inserted

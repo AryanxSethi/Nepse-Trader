@@ -1,37 +1,42 @@
 import re
+import threading
 from datetime import timedelta, date
 from rapidfuzz import process, fuzz
 
 
 SECURITY_CACHE = []
+security_cache_lock = threading.Lock()
 
 
 def set_security_cache(securities: list[dict]):
     global SECURITY_CACHE
-    SECURITY_CACHE = securities
+    with security_cache_lock:
+        SECURITY_CACHE = securities
 
 
 def fuzzy_search(query: str, limit: int = 20) -> list[dict]:
-    if not SECURITY_CACHE or not query or not query.strip():
+    with security_cache_lock:
+        cache = list(SECURITY_CACHE)
+    if not cache or not query or not query.strip():
         return []
 
     q = query.strip().upper()
-    exact = [s for s in SECURITY_CACHE if s["symbol"] == q]
+    exact = [s for s in cache if s["symbol"] == q]
     if exact:
         return [{**exact[0], "match_type": "exact", "score": 1.0}]
 
-    name_matches = [s for s in SECURITY_CACHE if q in s["name"].upper()]
+    name_matches = [s for s in cache if q in s["name"].upper()]
     if name_matches:
         return [{**s, "match_type": "name", "score": 0.95} for s in name_matches[:limit]]
 
-    choices = {s["symbol"]: s["symbol"] for s in SECURITY_CACHE}
+    choices = {s["symbol"]: s["symbol"] for s in cache}
     results = process.extract(q, choices, scorer=fuzz.WRatio, limit=limit)
 
     output = []
     for match, score, _ in results:
         if score < 50:
             continue
-        for s in SECURITY_CACHE:
+        for s in cache:
             if s["symbol"] == match:
                 output.append({**s, "match_type": "fuzzy", "score": round(score / 100, 2)})
                 break

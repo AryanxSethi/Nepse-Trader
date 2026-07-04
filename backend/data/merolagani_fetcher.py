@@ -30,13 +30,38 @@ class MerolaganiFetcher:
                 follow_redirects=True,
             )
 
+    async def _fetch_with_retry(self, client, url, params=None, max_retries=3):
+        last_exc = None
+        for attempt in range(max_retries):
+            try:
+                resp = await client.get(url, params=params)
+                if resp.status_code >= 500:
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            'GET %s returned %s, retrying (%d/%d)',
+                            url, resp.status_code, attempt + 1, max_retries,
+                        )
+                        await asyncio.sleep(2 ** attempt)
+                        continue
+                    resp.raise_for_status()
+                return resp
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.TimeoutException) as e:
+                last_exc = e
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        'GET %s failed (%s), retrying (%d/%d)',
+                        url, e, attempt + 1, max_retries,
+                    )
+                    await asyncio.sleep(2 ** attempt)
+        raise last_exc
+
     async def _get(self, path: str) -> str | None:
         await self._init_client()
         if circuit_breaker.is_open('merolagani'):
             logger.warning('[merolagani] circuit open, skipping %s', path)
             return None
         try:
-            resp = await self._client.get(f'{MEROLAGANI_BASE}{path}')
+            resp = await self._fetch_with_retry(self._client, f'{MEROLAGANI_BASE}{path}')
             resp.raise_for_status()
             circuit_breaker.record_success('merolagani')
             return resp.text
@@ -192,10 +217,6 @@ class MerolaganiFetcher:
             logger.debug('Merolagani SignalR index poll failed: %s', e)
             circuit_breaker.record_failure('merolagani')
             return None
-
-    async def get_sectors(self) -> list[dict]:
-        summary = await self.get_market_summary()
-        return summary.get('sectors', [])
 
     def _parse_gainers_losers(self, rows):
         items = []

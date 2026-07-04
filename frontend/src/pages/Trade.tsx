@@ -6,16 +6,16 @@ import StockChart from '../components/StockChart'
 import AISuggestion from '../components/AISuggestion'
 import CompanyInfo from '../components/CompanyInfo'
 import ComparePanel from '../components/ComparePanel'
+import FloorsheetPanel from '../components/FloorsheetPanel'
 import HermesSidebar from '../components/HermesSidebar'
 import FloatingChat from '../components/FloatingChat'
 import RefreshIndicator from '../components/RefreshIndicator'
-import { SkeletonBlock } from '../components/Skeleton'
+import { SkeletonChart, SkeletonCard } from '../components/Skeleton'
 import { formatNPR } from '../utils/format'
 import { useStockHistory } from '../hooks/useStockData'
-
 const MS_PER_DAY = 86400000
 import { PageTransition } from '../components/Navbar'
-import { CompanyIcon, WarningIcon, ChartIcon, CompareIcon } from '../components/Icons'
+import { CompanyIcon, WarningIcon, ChartIcon, CompareIcon, TableIcon } from '../components/Icons'
 
 function toDateStr(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -25,14 +25,27 @@ export default function Trade() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [symbol, setSymbol] = useState(searchParams.get('symbol') || '')
   const [dateDays, setDateDays] = useState(90)
-  const [activeTab, setActiveTab] = useState<'chart' | 'compare'>('chart')
+  const [activeTab, setActiveTab] = useState<'chart' | 'compare' | 'floorsheet'>('chart')
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
+  const [detailData, setDetailData] = useState<Record<string, string> | null>(null)
 
   const symbolFromParams = searchParams.get('symbol')
 
   useEffect(() => {
     if (symbolFromParams) setSymbol(symbolFromParams)
   }, [symbolFromParams])
+
+  useEffect(() => {
+    if (!symbol) { setDetailData(null); return }
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10000)
+    fetch(`/api/stocks/${encodeURIComponent(symbol)}/detail`, { signal: controller.signal })
+      .then(r => r.json())
+      .then(data => { if (!controller.signal.aborted) setDetailData(data) })
+      .catch(() => { if (!controller.signal.aborted) setDetailData(null) })
+      .finally(() => clearTimeout(timeout))
+    return () => { controller.abort(); clearTimeout(timeout) }
+  }, [symbol])
 
   const startStr = useMemo(
     () => toDateStr(new Date(Date.now() - dateDays * MS_PER_DAY)),
@@ -63,6 +76,22 @@ export default function Trade() {
       handleSearch(result.symbol, result.start_date, result.end_date)
     }
   }, [handleSearch])
+
+  const overlayData = useMemo(() => {
+    if (!detailData) return undefined
+    const parseNum = (v: string | undefined) => v ? parseFloat(v.replace(/[^0-9.]/g, '')) : undefined
+    const pivot: Record<string, number | undefined> = {}
+    for (const key of ['s3', 's2', 's1', 'pp', 'r1', 'r2', 'r3'] as const) {
+      pivot[key] = parseNum(detailData[`pivot_${key}`])
+    }
+    return {
+      vwap: parseNum(detailData.vwap),
+      prevClose: parseNum(detailData.prev_close),
+      high52w: parseNum(detailData['52w_high']),
+      low52w: parseNum(detailData['52w_low']),
+      pivot,
+    }
+  }, [detailData])
 
   return (
     <PageTransition>
@@ -97,6 +126,17 @@ export default function Trade() {
             <CompareIcon size={14} />
             Compare
           </button>
+          {symbol && (
+            <button
+              onClick={() => setActiveTab('floorsheet')}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
+                activeTab === 'floorsheet' ? 'border-accent text-accent' : 'border-transparent text-text-muted hover:text-text'
+              }`}
+            >
+              <TableIcon size={14} />
+              Floorsheet
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
@@ -104,6 +144,8 @@ export default function Trade() {
             <RefreshIndicator fetchedAt={fetchedAt} />
             {activeTab === 'compare' ? (
               <ComparePanel />
+            ) : activeTab === 'floorsheet' ? (
+              <FloorsheetPanel symbol={symbol} />
             ) : (
               <>
                 {symbol && (
@@ -117,6 +159,19 @@ export default function Trade() {
                         </span>
                       </span>
                     )}
+                    {detailData?.confidence_score && (
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                        detailData.confidence_score === 'High' ? 'bg-green/15 text-green' :
+                        detailData.confidence_score === 'Low' ? 'bg-red/15 text-red' :
+                        'bg-yellow/15 text-yellow'
+                      }`}>
+                        {detailData.confidence_score}
+                      </span>
+                    )}
+                    <div className="rounded-lg bg-yellow/10 border border-yellow/20 px-2 py-1 flex items-center gap-1">
+                      <WarningIcon size={10} className="text-yellow shrink-0" />
+                      <p className="text-[10px] text-yellow font-medium">AI-generated — do your own research</p>
+                    </div>
                   </div>
                 )}
 
@@ -133,11 +188,11 @@ export default function Trade() {
 
                 {isLoading && (
                   <div className="space-y-3">
-                    <SkeletonBlock height={400} />
+                    <SkeletonChart height={400} />
                     <div className="grid grid-cols-3 gap-3">
-                      <SkeletonBlock height={60} />
-                      <SkeletonBlock height={60} />
-                      <SkeletonBlock height={60} />
+                      <SkeletonCard lines={2} />
+                      <SkeletonCard lines={2} />
+                      <SkeletonCard lines={2} />
                     </div>
                   </div>
                 )}
@@ -148,14 +203,18 @@ export default function Trade() {
                       key={symbol + startStr + endStr}
                       data={data.prices || []}
                       indicators={data.indicators}
+                      overlays={overlayData}
                     />
-                    {symbol && (
-                      <CompanyInfo symbol={symbol} />
-                    )}
+                    <CompanyInfo symbol={symbol} />
                     {data.prices?.length > 0 && (
                       <AISuggestion
                         signal={data.signal}
-                        indicators={data.indicators}
+                        indicators={{
+                          ...data.indicators,
+                          ...(detailData?.ma5_signal ? { ma5_signal: detailData.ma5_signal } : {}),
+                          ...(detailData?.ma20_signal ? { ma20_signal: detailData.ma20_signal } : {}),
+                          ...(detailData?.ma180_signal ? { ma180_signal: detailData.ma180_signal } : {}),
+                        }}
                       />
                     )}
                   </>
@@ -186,14 +245,10 @@ export default function Trade() {
             )}
           </div>
 
-          <div className="space-y-4">
-            <HermesSidebar onSelectSymbol={handleSearch} currentSymbol={symbol} />
-          </div>
+          <HermesSidebar onSelectSymbol={handleSearch} currentSymbol={symbol} />
         </div>
       </div>
       <FloatingChat symbol={symbol} onParsedResult={handleParsedResult} />
     </PageTransition>
   )
 }
-
-

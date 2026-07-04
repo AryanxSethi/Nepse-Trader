@@ -123,7 +123,7 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
     <div className="relative w-full max-w-xl">
       <form onSubmit={handleSubmit}>
         <div className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-all duration-200 ${
-          error ? 'border-red shake' : 'border-border focus-within:border-accent/50'
+          error ? 'border-red animate-shake' : 'border-border focus-within:border-accent/50'
         } bg-surface-card`}>
           {loading ? (
             <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin shrink-0" />

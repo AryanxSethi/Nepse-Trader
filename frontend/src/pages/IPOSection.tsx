@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, type JSX } from 'react'
 import { PageTransition } from '../components/Navbar'
 import ErrorBanner from '../components/ErrorBanner'
 import RefreshIndicator from '../components/RefreshIndicator'
-import { DocumentIcon, InfoIcon, SourceIcon, WarningIcon, ChevronLeftIcon, ChevronRightIcon } from '../components/Icons'
+import { DocumentIcon, InfoIcon, SourceIcon, ChevronLeftIcon, ChevronRightIcon } from '../components/Icons'
 import { SkeletonBlock } from '../components/Skeleton'
 
 interface IPOItem {

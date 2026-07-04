@@ -15,6 +15,7 @@ export interface StreamCallbacks {
   onMeta: (meta: Partial<AskResponse>) => void
   onDone: (fullAnswer: string) => void
   onError: (error: Error) => void
+  onStatus?: (status: string) => void
 }
 
 export function useHermesStream() {
@@ -29,7 +30,7 @@ export function useHermesStream() {
     const controller = new AbortController()
     abortRef.current = controller
 
-    const timeoutId = setTimeout(() => controller.abort(), 30000)
+    const timeoutId = setTimeout(() => controller.abort(), 180000)
 
     try {
       const res = await fetch('/api/ask', {
@@ -56,9 +57,10 @@ export function useHermesStream() {
         buffer = lines.pop() || ''
 
         for (const line of lines) {
-          if (!line.trim()) continue
+          const trimmed = line.trim()
+          if (!trimmed) continue
           try {
-            const msg = JSON.parse(line)
+            const msg = JSON.parse(trimmed)
             if (msg.type === 'meta') {
               callbacks.onMeta(msg)
             } else if (msg.type === 'token') {
@@ -66,35 +68,38 @@ export function useHermesStream() {
               callbacks.onToken(msg.token)
             } else if (msg.type === 'done') {
               callbacks.onDone(fullAnswer)
+            } else if (msg.type === 'status' && callbacks.onStatus) {
+              callbacks.onStatus(msg.status)
             }
-          } catch {
+          } catch (e) {
+            console.warn('[useHermesStream] parse error on line:', trimmed.slice(0, 80), e)
           }
         }
       }
 
-      // Process remaining buffer
       if (buffer.trim()) {
         try {
-          const msg = JSON.parse(buffer)
+          const msg = JSON.parse(buffer.trim())
           if (msg.type === 'token') {
             fullAnswer += msg.token
             callbacks.onToken(msg.token)
           } else if (msg.type === 'done') {
             callbacks.onDone(fullAnswer)
+          } else if (msg.type === 'status' && callbacks.onStatus) {
+            callbacks.onStatus(msg.status)
           }
-        } catch {
+        } catch (e) {
+          console.warn('[useHermesStream] parse error on remaining buffer:', buffer.trim().slice(0, 80), e)
         }
       }
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
         callbacks.onToken('Request timed out. Please try a simpler question.')
         callbacks.onDone(fullAnswer)
         return
       }
-      if (err.name !== 'AbortError') {
-        setError(err)
-        callbacks.onError(err)
-      }
+      setError(err instanceof Error ? err : new Error(String(err)))
+      callbacks.onError(err instanceof Error ? err : new Error(String(err)))
     } finally {
       clearTimeout(timeoutId)
       setIsPending(false)
@@ -131,15 +136,18 @@ async function collectAnswer(question: string): Promise<AskResponse> {
     const lines = buffer.split('\n')
     buffer = lines.pop() || ''
     for (const line of lines) {
-      if (!line.trim()) continue
+      const trimmed = line.trim()
+      if (!trimmed) continue
       try {
-        const msg = JSON.parse(line)
+        const msg = JSON.parse(trimmed)
         if (msg.type === 'meta') {
           meta = msg
         } else if (msg.type === 'token') {
           answer += msg.token
         }
-      } catch {}
+      } catch (e) {
+        console.warn('[collectAnswer] parse error on line:', trimmed.slice(0, 80), e)
+      }
     }
   }
 

@@ -199,9 +199,12 @@ export default function Backtest() {
             <div className="flex items-center justify-center">
               <RefreshIndicator fetchedAt={computedAt} />
             </div>
-            <p className="text-[10px] text-text-muted/40 text-center">
-              Past performance does not guarantee future results. For educational purposes only.
-            </p>
+            <div className="rounded-lg bg-yellow/10 border border-yellow/20 p-3 flex items-start gap-2">
+              <WarningIcon size={16} className="text-yellow shrink-0 mt-0.5" />
+              <p className="text-xs text-yellow font-medium">
+                Backtest results are based on historical data and hypothetical trading. <strong>Past performance does not guarantee future results.</strong> For educational purposes only.
+              </p>
+            </div>
           </div>
         )}
 

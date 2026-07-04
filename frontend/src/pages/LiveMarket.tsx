@@ -6,6 +6,7 @@ import { PageTransition } from '../components/Navbar'
 import FloatingChat from '../components/FloatingChat'
 import ErrorBanner from '../components/ErrorBanner'
 import RefreshIndicator from '../components/RefreshIndicator'
+import { SkeletonCard, SkeletonChart } from '../components/Skeleton'
 import { TrendingUpIcon, TrendingDownIcon, SearchIcon, ChartIcon } from '../components/Icons'
 import { formatNPR, formatPercent, formatChange } from '../utils/format'
 
@@ -67,59 +68,63 @@ export default function LiveMarket() {
   }, [marketStatus.is_open])
 
   useEffect(() => {
-    if (!chartRef.current || snapshots.length < 2) return
-    if (!chartApiRef.current) {
-      const chart = createChart(chartRef.current, {
-        width: chartRef.current.clientWidth,
-        height: 160,
-        layout: {
-          background: { type: ColorType.Solid, color: 'transparent' },
-          textColor: '#94a3b8',
-          fontSize: 10,
+    if (!chartRef.current) return
+    const chart = createChart(chartRef.current, {
+      width: chartRef.current.clientWidth,
+      height: 160,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: '#94a3b8',
+        fontSize: 10,
+      },
+      grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+      rightPriceScale: { visible: false },
+      timeScale: {
+        visible: true,
+        timeVisible: true,
+        secondsVisible: false,
+        borderVisible: false,
+        tickMarkFormatter: (time: number | string | {timestamp: number}) => {
+          if (typeof time !== 'number') return ''
+          const nptMs = time * 1000 + (5 * 3600 + 45 * 60) * 1000
+          const npt = new Date(nptMs)
+          return npt.getUTCHours().toString().padStart(2, '0') + ':' +
+                 npt.getUTCMinutes().toString().padStart(2, '0')
         },
-        grid: { vertLines: { visible: false }, horzLines: { visible: false } },
-        rightPriceScale: { visible: false },
-        timeScale: {
-          visible: true,
-          timeVisible: true,
-          secondsVisible: false,
-          borderVisible: false,
-          tickMarkFormatter: (time: number) => {
-            const d = new Date(time * 1000)
-            const nptMs = time * 1000 + (5 * 3600 + 45 * 60) * 1000
-            const npt = new Date(nptMs)
-            return npt.getUTCHours().toString().padStart(2, '0') + ':' +
-                   npt.getUTCMinutes().toString().padStart(2, '0')
-          },
-        },
-        crosshair: { vertLine: { visible: false }, horzLine: { visible: false } },
-        handleScroll: false,
-        handleScale: false,
-      })
-      chartApiRef.current = chart
-      nepseSeriesRef.current = chart.addSeries(LineSeries, {
-        color: '#06b6d4',
-        lineWidth: 2,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      })
-      sensSeriesRef.current = chart.addSeries(LineSeries, {
-        color: '#f59e0b',
-        lineWidth: 2,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      })
-      const handleResize = () => {
-        if (chartRef.current && chartApiRef.current) {
-          chartApiRef.current.applyOptions({ width: chartRef.current.clientWidth })
-        }
+      },
+      crosshair: { vertLine: { visible: false }, horzLine: { visible: false } },
+      handleScroll: false,
+      handleScale: false,
+    })
+    chartApiRef.current = chart
+    nepseSeriesRef.current = chart.addSeries(LineSeries, {
+      color: '#06b6d4',
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    })
+    sensSeriesRef.current = chart.addSeries(LineSeries, {
+      color: '#f59e0b',
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    })
+    const handleResize = () => {
+      if (chartRef.current && chartApiRef.current) {
+        chartApiRef.current.applyOptions({ width: chartRef.current.clientWidth })
       }
-      window.addEventListener('resize', handleResize)
-      return () => window.removeEventListener('resize', handleResize)
     }
-  }, [snapshots.length])
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      chart.remove()
+      chartApiRef.current = null
+      nepseSeriesRef.current = null
+      sensSeriesRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     if (!nepseSeriesRef.current || !sensSeriesRef.current || snapshots.length < 2) return
@@ -141,7 +146,7 @@ export default function LiveMarket() {
       setPrices(json.prices || [])
       setError(null)
       setFetchedAt(new Date().toISOString())
-    } catch (e) {
+    } catch {
       setError('Failed to load market data. Check your connection.')
     } finally {
       setLoading(false)
@@ -191,14 +196,12 @@ export default function LiveMarket() {
   if (loading) {
     return (
       <PageTransition>
-        <div className="max-w-6xl mx-auto px-4 py-6">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-surface-hover rounded w-48" />
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[1,2,3,4].map(i => <div key={i} className="h-20 bg-surface-hover rounded-xl" />)}
-            </div>
-            <div className="h-96 bg-surface-hover rounded-xl" />
+        <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+          <div className="h-8 w-48" />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[1,2,3,4].map(i => <SkeletonCard key={i} lines={2} />)}
           </div>
+          <SkeletonChart height={380} />
         </div>
       </PageTransition>
     )
@@ -232,8 +235,9 @@ export default function LiveMarket() {
               <div key={idx.name} className="rounded-xl bg-surface-card border border-border p-3">
                 <p className="text-[11px] text-text-muted truncate">{idx.name}</p>
                 <p className="text-lg font-bold text-text mt-1">{formatNPR(idx.value, 2)}</p>
-                <p className={`text-xs font-medium mt-0.5 ${(idx.change ?? 0) >= 0 ? 'text-green' : 'text-red'}`}>
+                <p className={`text-xs font-medium mt-0.5 ${(idx.percent_change ?? idx.change ?? 0) >= 0 ? 'text-green' : 'text-red'}`}>
                   {formatChange(idx.change)}
+                  <span className="ml-1">{(idx.percent_change ?? 0) >= 0 ? '+' : ''}{idx.percent_change?.toFixed(2)}%</span>
                 </p>
               </div>
             ))}
@@ -244,7 +248,7 @@ export default function LiveMarket() {
           <div className="rounded-xl bg-surface-card border border-border p-4">
             <div className="flex items-center gap-2 mb-2">
               <ChartIcon size={16} className="text-accent" />
-              <span className="text-xs font-semibold text-text-muted">NEPSE vs Sensitive Index</span>
+              <span className="text-xs font-semibold text-text-muted">Index Overlay</span>
               <span className="text-[10px] text-cyan ml-2">NEPSE</span>
               <span className="text-[10px] text-amber">Sensitive</span>
             </div>

@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import os
@@ -18,8 +17,8 @@ IPO_CACHE_TTL = 60
 DATA_CACHE_TTL = 30
 DATA_CACHE_MAXSIZE = 100
 
-_market_cache: TTLCache = TTLCache(maxsize=1, ttl=MARKET_CACHE_TTL)
-_ipo_cache: TTLCache = TTLCache(maxsize=1, ttl=IPO_CACHE_TTL)
+_market_cache: TTLCache = TTLCache(maxsize=2, ttl=MARKET_CACHE_TTL)
+_ipo_cache: TTLCache = TTLCache(maxsize=2, ttl=IPO_CACHE_TTL)
 _data_cache: TTLCache = TTLCache(maxsize=DATA_CACHE_MAXSIZE, ttl=DATA_CACHE_TTL)
 
 _disk_lock = Lock()

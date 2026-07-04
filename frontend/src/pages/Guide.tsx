@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import QuestionInput from '../components/QuestionInput'
 import GuideAnswer from '../components/GuideAnswer'
 import { PageTransition } from '../components/Navbar'
@@ -31,8 +32,10 @@ export default function Guide() {
       return 'Broker information is available on the dedicated **Brokers page**. Click the link below to view the full directory with rankings and turnover data.'
     }
 
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10000)
     try {
-      const res = await fetch('/api/guide/search?q=' + encodeURIComponent(query))
+      const res = await fetch('/api/guide/search?q=' + encodeURIComponent(query), { signal: controller.signal })
       const data = await res.json()
       if (data?.entry || data?.llm_answer) {
         setCuratedAnswer(data)
@@ -42,6 +45,8 @@ export default function Guide() {
       return 'No guide entry found for that query.'
     } catch {
       return 'Guide search unavailable. Please try again later.'
+    } finally {
+      clearTimeout(timeout)
     }
   }
 
@@ -68,12 +73,12 @@ export default function Guide() {
             <p className="text-sm text-text-muted">
               Browse all 92 NEPSE member brokers with turnover rankings, district coverage, and TMS links.
             </p>
-            <a
-              href="/brokers"
+            <Link
+              to="/brokers"
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
             >
               Open Brokers Directory
-            </a>
+            </Link>
           </div>
         )}
 

@@ -4,10 +4,11 @@ A real-time NEPSE stock analysis platform with technical indicators, portfolio t
 
 ## Features
 
-- **Live Market Data** — Real-time prices, indices, gainers/losers from yonepse and Merolagani
-- **Technical Analysis** — RSI, MACD, SMA, ADX, Bollinger Bands with auto-generated BUY/SELL/HOLD signals
+- **Live Market Data** — Real-time prices, 17 indices, gainers/losers from yonepse and Merolagani
+- **Technical Analysis** — RSI, MACD, SMA, ADX, VWAP, pivot levels with auto-generated BUY/SELL/HOLD signals
 - **Portfolio Tracker** — Add/manage holdings with live P&L calculation
-- **Stock Comparison** — Compare 2 stocks side-by-side with indicators
+- **Stock Comparison** — Compare 2 stocks side-by-side with indicators and AI signals
+- **Floorsheet Data** — Transaction-level trade history from Sharesansar
 - **Backtesting** — SMA crossover strategy backtester with equity curves
 - **IPO Database** — Paginated IPO listings from nepalipaisa with BS/AD dates
 - **LLM Chat** — Streaming AI assistant using OpenRouter (primary) or local Ollama (fallback)
@@ -24,9 +25,10 @@ nepse-hermes-trader/
 │   ├── models.py             # ORM models
 │   ├── data/
 │   │   ├── fetcher.py        # yonepse data fetchers (live, summary, indices, top, IPO)
-│   │   ├── nepalstock_fetcher.py    # NepalStock API with CSS descrambling
-│   │   ├── merolagani_fetcher.py    # Merolagani scraping
+│   │   ├── sharesansar_fetcher.py  # Sharesansar scraping (VWAP, pivots, floorsheet)
+│   │   ├── merolagani_fetcher.py    # Merolagani scraping (prices, company details)
 │   │   ├── nepalipaisa_fetcher.py   # nepalipaisa IPO API
+│   │   ├── broker_fetcher.py        # Broker directory fetcher
 │   │   ├── _http.py          # HTTP retry utility + circuit breaker
 │   │   ├── cache.py          # TTLCache wrapper with disk persistence
 │   │   ├── market_scheduler.py      # Background data refresh scheduler
@@ -63,7 +65,14 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Server starts on `http://localhost:8001`. API docs at `/docs`.
+Server starts on `http://127.0.0.1:8001`. API docs at `/docs`.
+
+### One-Click (Windows)
+
+```cmd
+start-demo.bat
+```
+Starts backend, health-checks, then launches frontend.
 
 ### Frontend
 
@@ -73,7 +82,7 @@ npm install
 npm run dev
 ```
 
-Dev server on `http://localhost:5173`. Proxies `/api` to `localhost:8001`.
+Dev server on `http://127.0.0.1:5173`. Proxies `/api` to `127.0.0.1:8001`.
 
 ### LLM Chat Setup
 
@@ -100,7 +109,8 @@ Dev server on `http://localhost:5173`. Proxies `/api` to `localhost:8001`.
 | GET | `/api/securities` | Securities list with search |
 | GET | `/api/search` | Fuzzy symbol search |
 | GET | `/api/stocks/{symbol}/history` | Price history + indicators |
-| GET | `/api/stocks/{symbol}/detail` | Company detail |
+| GET | `/api/stocks/{symbol}/detail` | Company detail (includes VWAP, pivots, MA signals) |
+| GET | `/api/stocks/{symbol}/floorsheet` | Transaction-level floorsheet data |
 | GET | `/api/stocks/compare` | Multi-stock comparison |
 | GET | `/api/signals` | BUY/SELL/HOLD signals |
 | POST | `/api/signals/generate` | Trigger signal generation |
@@ -119,11 +129,11 @@ Dev server on `http://localhost:5173`. Proxies `/api` to `localhost:8001`.
 
 ## Data Sources
 
-| Source | Type | Reliability |
-|--------|------|-------------|
+| Source | Type | Role |
+|--------|------|------|
 | [yonepse](https://shubhamnpk.github.io/yonepse) | JSON API | Primary (live prices, summary, indices) |
-| [NepalStock](https://www.nepalstock.com.np) | REST API + CSS descrambling | Fallback (live prices, market status) |
-| [Merolagani](https://merolagani.com) | HTML scraping | Fallback (live prices, summary, company detail) |
+| [Sharesansar](https://www.sharesansar.com) | HTML scraping | Secondary (VWAP, pivots, MA signals, floorsheet, real volume) |
+| [Merolagani](https://merolagani.com) | HTML scraping | Tertiary (live prices, SignalR index streaming, 1Y yield) |
 | [nepalipaisa](https://nepalipaisa.com) | REST API | Primary (IPO listings with pagination) |
 
 ## Error Handling & Reliability

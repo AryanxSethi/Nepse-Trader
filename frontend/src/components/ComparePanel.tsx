@@ -83,8 +83,11 @@ export default function ComparePanel() {
         setLoading(false)
       })
       .catch((e) => {
-        if (e.name !== 'AbortError') {
-          setError('Request timed out — backend may be unavailable')
+        if (e instanceof DOMException && e.name === 'AbortError') return
+        if (e instanceof TypeError) {
+          setError('Network error — check your connection')
+        } else {
+          setError('Compare data unavailable. Please try again.')
         }
         setLoading(false)
       })
@@ -92,17 +95,17 @@ export default function ComparePanel() {
   }, [symbol1, symbol2])
 
   const metrics = useMemo(() => [
-    { label: 'LTP', key: 'ltp', fmt: (v: number | null) => `Rs ${formatPrice(v)}` },
+    { label: 'LTP', key: 'ltp', fmt: (v: number | null) => formatPrice(v) },
     { label: 'Change %', key: 'percent_change', fmt: (v: number | null) => v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : '\u2014' },
     { label: 'Volume', key: 'volume', fmt: (v: number | null) => v != null ? v.toLocaleString() : '\u2014' },
     { label: 'Turnover', key: 'turnover', fmt: formatNum },
     { label: 'Market Cap', key: 'market_cap', fmt: formatNum },
-    { label: 'RSI', key: 'rsi', fmt: formatPrice },
-    { label: 'MACD', key: 'macd', fmt: formatPrice },
-    { label: 'MACD Signal', key: 'macd_signal', fmt: formatPrice },
-    { label: 'SMA20', key: 'sma20', fmt: formatPrice },
-    { label: 'SMA50', key: 'sma50', fmt: formatPrice },
-    { label: 'ADX', key: 'adx', fmt: formatPrice },
+    { label: 'RSI', key: 'rsi', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
+    { label: 'MACD', key: 'macd', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
+    { label: 'MACD Signal', key: 'macd_signal', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
+    { label: 'SMA20', key: 'sma20', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
+    { label: 'SMA50', key: 'sma50', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
+    { label: 'ADX', key: 'adx', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
     { label: 'Signal', key: 'signal_type', fmt: (v: string | null) => v || '\u2014' },
     { label: 'Confidence', key: 'signal_confidence', fmt: (v: number | null) => v != null ? `${v}%` : '\u2014' },
   ], [])
@@ -206,6 +209,15 @@ export default function ComparePanel() {
       {!symbol1 && !symbol2 && !loading && (
         <div className="rounded-xl bg-surface-card border border-border flex items-center justify-center h-32">
           <p className="text-xs text-text-muted">Select two stocks to compare</p>
+        </div>
+      )}
+
+      {data && data.length >= 2 && !loading && (
+        <div className="rounded-lg bg-yellow/10 border border-yellow/20 p-2 flex items-start gap-1.5">
+          <WarningIcon size={12} className="text-yellow shrink-0 mt-0.5" />
+          <p className="text-[10px] text-yellow font-medium">
+            Signal and confidence values are AI-generated and may be inaccurate.
+          </p>
         </div>
       )}
     </div>

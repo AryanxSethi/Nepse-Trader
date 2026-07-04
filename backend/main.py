@@ -1,10 +1,12 @@
 import asyncio
+import pandas as pd
 import httpx
 import json
 import logging
 import re
 from datetime import datetime, timedelta, date, timezone
 from contextlib import asynccontextmanager
+from database import engine
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(levelname)s: %(message)s')
 logger = logging.getLogger('main')
@@ -27,14 +29,14 @@ from data.fetcher import (
 from data.seeder import seed_securities
 from data.updater import run_daily_update
 from data.market_scheduler import MarketScheduler, get_market_status
-from data.nepalstock_fetcher import NepalStockFetcher
 from data.merolagani_fetcher import MerolaganiFetcher
+from data.sharesansar_fetcher import SharesansarFetcher
 from analysis.indicators import compute_indicators, compute_signal
 from analysis.signals import generate_signals
 from analysis.backtest import run_backtest
 from search.fuzzy import fuzzy_search, parse_query, extract_symbols, set_security_cache
 from guide.knowledge_base import find_guide_entry, get_popular_entries
-from guide.broker_directory import search_brokers, get_top_brokers
+from guide.broker_directory import search_brokers, get_top_brokers, _ensure_brokers as _ensure_broker_cache
 from data.fetcher_sectors import get_sectors, get_stocks_by_sector
 from data.fetcher_ipo import load_ipos
 from data.cache import (
@@ -47,10 +49,11 @@ from data.cache import (
 
 LIVE_CACHE = {"data": [], "timestamp": None, "index_history": [], "current_index": None,
                "current_indices": None, "index_hourly": [], "index_30s": []}
+live_cache_lock = asyncio.Lock()
 
 scheduler = MarketScheduler()
-nepse_fetcher = NepalStockFetcher()
 merolagani_fetcher = MerolaganiFetcher()
+sharesansar_fetcher = SharesansarFetcher()
 
 
 def _to_timestamp(dt: date | datetime) -> int:
@@ -98,7 +101,8 @@ async def seed_daily_history(cache: dict):
                                 continue
                     if len(parsed) >= 5:
                         parsed.reverse()
-                        cache['index_history'] = parsed[-35:]
+                        async with live_cache_lock:
+                            cache['index_history'] = parsed[-35:]
                         logger.info("Seeded index_history with %d daily points from Indices.aspx", len(parsed))
                         return
         except Exception as e:
@@ -114,7 +118,8 @@ async def seed_daily_history(cache: dict):
             close = r.get('close') or r.get('ltp', 0)
             if close:
                 history.append({'time': _to_timestamp(dt), 'value': float(close)})
-        cache['index_history'] = history[-35:]
+        async with live_cache_lock:
+            cache['index_history'] = history[-35:]
         logger.info("Seeded index_history with %d daily points from DB", len(history))
 
 
@@ -161,47 +166,38 @@ async def start_index_polling(cache: dict, ever_had_signalr: bool = False):
                     for name, entry in all_indices.items():
                         vals[name] = entry.get('currentValue')
 
-                    tail = cache.setdefault('index_30s', [])
-                    prev = tail[-1] if tail else None
-                    if is_open or not prev:
-                        prev_vals = prev.get('values', {}) if prev else {}
-                        if any(vals.get(k) != prev_vals.get(k) for k in vals):
-                            tail.append({'time': _to_timestamp(now_utc), 'values': dict(vals)})
-                            if len(tail) > 480:
-                                cache['index_30s'] = tail[-480:]
+                    async with live_cache_lock:
+                        tail = cache.setdefault('index_30s', [])
+                        prev = tail[-1] if tail else None
+                        if is_open or not prev:
+                            prev_vals = prev.get('values', {}) if prev else {}
+                            if any(vals.get(k) != prev_vals.get(k) for k in vals):
+                                tail.append({'time': _to_timestamp(now_utc), 'values': dict(vals)})
+                                if len(tail) > 480:
+                                    cache['index_30s'] = tail[-480:]
 
-                    hourly = cache.setdefault('index_hourly', [])
-                    hour_key = _to_timestamp(now_npt.replace(minute=0, second=0, microsecond=0))
-                    if not hourly or hourly[-1].get('time') != hour_key:
-                        hourly.append({'time': hour_key, 'values': dict(vals)})
-                        nv = vals.get('NEPSE')
-                        if nv is not None:
-                            logger.info("Index hourly point: %s = %.2f",
-                                        now_npt.strftime('%Y-%m-%d %H:00'), nv)
+                        hourly = cache.setdefault('index_hourly', [])
+                        hour_key = _to_timestamp(now_npt.replace(minute=0, second=0, microsecond=0))
+                        if not hourly or hourly[-1].get('time') != hour_key:
+                            hourly.append({'time': hour_key, 'values': dict(vals)})
+                            nv = vals.get('NEPSE')
+                            if nv is not None:
+                                logger.info("Index hourly point: %s = %.2f",
+                                            now_npt.strftime('%Y-%m-%d %H:00'), nv)
 
-                    cache['current_indices'] = all_indices
-                    n = all_indices.get('NEPSE', {})
-                    cache['current_index'] = {
-                        'name': 'NEPSE Index',
-                        'currentValue': n.get('currentValue'),
-                        'change': n.get('change'),
-                        'perChange': n.get('perChange'),
-                    } if n.get('currentValue') is not None else None
+                        cache['current_indices'] = all_indices
+                        n = all_indices.get('NEPSE', {})
+                        cache['current_index'] = {
+                            'name': 'NEPSE Index',
+                            'currentValue': n.get('currentValue'),
+                            'change': n.get('change'),
+                            'perChange': n.get('perChange'),
+                        } if n.get('currentValue') is not None else None
             except Exception as e:
                 logger.warning('Index poll failed: %s', e)
 
             await asyncio.sleep(15 if is_open else 300)
     asyncio.create_task(_poll())
-
-PAGE_MAP = {
-    "compare": "/trade",
-    "chart": "/trade",
-    "overview": "/",
-    "signal": "/signals",
-    "backtest": "/backtest",
-    "guide": "/guide",
-    "ipo": "/ipo",
-}
 
 
 @asynccontextmanager
@@ -232,25 +228,28 @@ async def lifespan(app: FastAPI):
         logger.info("Signals generated")
     except Exception as e:
         logger.warning("Signal generation failed: %s", e)
-    try:
-        await nepse_fetcher.ensure_css()
-    except Exception as e:
-        logger.warning("Failed to load CSS salts: %s", e)
     await prewarm_caches()
+    try:
+        await _ensure_broker_cache()
+    except Exception as e:
+        logger.warning("Failed to prewarm broker cache: %s", e)
     disk_live = load_live_cache()
-    for k, v in disk_live.items():
-        if v is not None:
-            LIVE_CACHE[k] = v
-    has_signalr = bool(LIVE_CACHE.get('current_indices'))
+    async with live_cache_lock:
+        for k, v in disk_live.items():
+            if v is not None:
+                LIVE_CACHE[k] = v
+        has_signalr = bool(LIVE_CACHE.get('current_indices'))
     scheduler.start()
     await seed_daily_history(LIVE_CACHE)
     await start_index_polling(LIVE_CACHE, has_signalr)
     yield
-    persist_live_cache(LIVE_CACHE)
+    async with live_cache_lock:
+        persist_live_cache(LIVE_CACHE)
     await persist_caches_on_exit()
     await merolagani_fetcher.stop()
+    await sharesansar_fetcher.stop()
     await scheduler.stop()
-    await nepse_fetcher.close()
+    await engine.dispose()
 
 
 app = FastAPI(title="NEPSE Hermes Trader", lifespan=lifespan)
@@ -281,36 +280,23 @@ async def add_cache_headers(request, call_next):
     return response
 
 
-def _response_meta(source: str = '', stale: bool = False, error: str | None = None) -> dict:
-    return {
-        "source": source,
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
-        "stale": stale,
-        "error": error,
-    }
-
-def _envelope(data, meta: dict) -> dict:
-    return {"data": data, "meta": meta}
-
-def _envelope_list(data: list, meta: dict) -> dict:
-    return {"data": data, "meta": meta, "count": len(data)}
-
-
 async def _fetch_live_all() -> list[dict]:
     cached_data, cached_ts = get_market_cache()
     try:
         data = await fetch_all_securities()
         if data:
             set_market_cache(data)
-            LIVE_CACHE["data"] = data
-            LIVE_CACHE["timestamp"] = datetime.now(timezone.utc)
+            async with live_cache_lock:
+                LIVE_CACHE["data"] = data
+                LIVE_CACHE["timestamp"] = datetime.now(timezone.utc)
             return data
     except Exception as e:
         logger.warning("fetch_all_securities failed: %s", e)
 
     if cached_data:
-        LIVE_CACHE["data"] = cached_data
-        LIVE_CACHE["timestamp"] = cached_ts
+        async with live_cache_lock:
+            LIVE_CACHE["data"] = cached_data
+            LIVE_CACHE["timestamp"] = cached_ts
         return cached_data
     return []
 
@@ -414,13 +400,11 @@ async def market_overview():
         m_summary = {} if isinstance(merolagani_summary, Exception) else (merolagani_summary or {})
         summary_list = [] if isinstance(summary_resp, Exception) else (summary_resp or [])
 
-        current_indices = LIVE_CACHE.get('current_indices')
+        async with live_cache_lock:
+            current_indices = LIVE_CACHE.get('current_indices')
         indices_data = []
         if current_indices:
             for entry in current_indices.values():
-                n = (entry.get("name") or "").lower()
-                if n not in ('nepse', 'nepse index', 'sensitive index'):
-                    continue
                 indices_data.append({
                     "name": entry.get("name", ""),
                     "value": entry.get("currentValue"),
@@ -501,9 +485,12 @@ async def market_overview():
 
 @app.get("/api/market/index-history")
 async def market_index_history():
-    daily = LIVE_CACHE.get("index_history", [])
-    hourly = LIVE_CACHE.get("index_hourly", [])
-    tail = LIVE_CACHE.get("index_30s", [])
+    async with live_cache_lock:
+        daily = LIVE_CACHE.get("index_history", [])
+        hourly = LIVE_CACHE.get("index_hourly", [])
+        tail = LIVE_CACHE.get("index_30s", [])
+        current_index = LIVE_CACHE.get("current_index")
+        current_indices = LIVE_CACHE.get("current_indices")
 
     merged = []
     if daily:
@@ -521,35 +508,58 @@ async def market_index_history():
 
     return {
         "points": merged,
-        "current": LIVE_CACHE.get("current_index"),
+        "current": current_index,
         "snapshots": tail[-60:] if tail else [],
-        "indices": LIVE_CACHE.get("current_indices"),
+        "indices": current_indices,
     }
 
 
 @app.get("/api/market/live")
 async def market_live():
     try:
-        prices_resp, summary_resp = await asyncio.gather(
+        prices_resp, summary_resp, ss_resp = await asyncio.gather(
             merolagani_fetcher.get_live_prices(),
             merolagani_fetcher.get_market_summary(),
+            sharesansar_fetcher.get_live_trading(),
             return_exceptions=True,
         )
         prices = [] if isinstance(prices_resp, Exception) else (prices_resp or [])
         summary = {} if isinstance(summary_resp, Exception) else (summary_resp or {})
+        ss_data = {} if isinstance(ss_resp, Exception) else (ss_resp or {})
 
-        current_indices = LIVE_CACHE.get('current_indices')
+        ss_prices = ss_data.get('prices', [])
+        if ss_prices:
+            ss_by_symbol = {p['symbol'].upper(): p for p in ss_prices if p.get('symbol')}
+            for p in prices:
+                sym = p.get('symbol', '').upper()
+                ss = ss_by_symbol.get(sym)
+                if ss:
+                    if ss.get('volume') is not None:
+                        p['volume'] = ss['volume']
+                    if ss.get('prev_close') is not None:
+                        p['prev_close'] = ss['prev_close']
+
+        async with live_cache_lock:
+            current_indices = LIVE_CACHE.get('current_indices')
         indices_data = []
         if current_indices:
             for entry in current_indices.values():
-                n = (entry.get("name") or "").lower()
-                if n not in ('nepse', 'nepse index', 'sensitive index'):
-                    continue
                 indices_data.append({
                     "name": entry.get("name", ""),
                     "value": entry.get("currentValue"),
                     "change": entry.get("change"),
                     "percent_change": entry.get("perChange"),
+                })
+
+        ss_indices = ss_data.get('indices', [])
+        existing_names = {i['name'].lower() for i in indices_data}
+        for idx in ss_indices:
+            if idx.get('name', '').lower() not in existing_names:
+                indices_data.append({
+                    'name': idx['name'],
+                    'value': idx['value'],
+                    'change': None,
+                    'percent_change': idx.get('percent_change'),
                 })
 
         turnovers = summary.get('turnovers', [])
@@ -624,6 +634,7 @@ async def stock_history(symbol: str, start: str = "", end: str = ""):
             select(DailyPrice)
             .where(DailyPrice.symbol == sym, DailyPrice.date >= start_date, DailyPrice.date <= end_date)
             .order_by(DailyPrice.date)
+            .limit(1000)
         )
         records = [r.to_dict() for r in rows.scalars().all()]
 
@@ -631,11 +642,12 @@ async def stock_history(symbol: str, start: str = "", end: str = ""):
         return {"prices": [], "indicators": {}, "signal": None}
 
     try:
+        market_status = get_market_status()
         today_candle = await _get_live_candle(sym)
-        if today_candle and (not records or records[-1].get("date") != today.isoformat()):
+        if (today_candle and market_status.get('is_open')
+            and (not records or records[-1].get("date") != today.isoformat())):
             records.append(today_candle)
 
-        import pandas as pd
         df = pd.DataFrame(records)
         indicators = compute_indicators(df)
         sig_type, confidence, reason = compute_signal(indicators)
@@ -654,6 +666,52 @@ async def stock_detail(symbol: str):
     detail = await merolagani_fetcher.get_company_detail(symbol)
     if not detail:
         detail = {}
+
+    try:
+        ss_price, ss_detail = await asyncio.gather(
+            sharesansar_fetcher.get_today_share_price_for_symbol(symbol),
+            sharesansar_fetcher.get_company_detail(symbol),
+            return_exceptions=True,
+        )
+        ss_price_data = {} if isinstance(ss_price, Exception) else (ss_price or {})
+        ss_detail_data = {} if isinstance(ss_detail, Exception) else (ss_detail or {})
+    except Exception as e:
+        logger.warning("Sharesansar detail fetch failed for %s: %s", symbol, e)
+        ss_price_data = {}
+        ss_detail_data = {}
+
+    if ss_price_data.get('vwap') is not None:
+        detail['vwap'] = str(ss_price_data['vwap'])
+    if ss_price_data.get('prev_close') is not None:
+        detail['prev_close'] = str(ss_price_data['prev_close'])
+    if ss_price_data.get('volume') is not None:
+        detail['volume'] = str(int(ss_price_data['volume']))
+    if ss_price_data.get('avg_180d') is not None:
+        detail['180d_avg'] = str(ss_price_data['avg_180d'])
+    if ss_price_data.get('avg_120d') is not None:
+        if not detail.get('120d_avg'):
+            detail['120d_avg'] = str(ss_price_data['avg_120d'])
+    if ss_price_data.get('confidence_score') is not None:
+        detail['confidence_score'] = ss_price_data['confidence_score']
+    if ss_price_data.get('high_52w') is not None:
+        if not detail.get('52w_high'):
+            detail['52w_high'] = str(ss_price_data['high_52w'])
+    if ss_price_data.get('low_52w') is not None:
+        if not detail.get('52w_low'):
+            detail['52w_low'] = str(ss_price_data['low_52w'])
+
+    pivot = ss_detail_data.get('pivot')
+    if pivot:
+        for k, v in pivot.items():
+            detail[f'pivot_{k}'] = str(v)
+    moving = ss_detail_data.get('moving')
+    if moving:
+        for period_key, period_data in moving.items():
+            if isinstance(period_data, dict):
+                detail[f'{period_key}_signal'] = period_data.get('signal')
+                if period_data.get('value') is not None:
+                    detail[f'{period_key}_value'] = str(period_data['value'])
+
     async with async_session() as session:
         result = await session.execute(
             select(Security).where(Security.symbol == symbol.upper())
@@ -669,10 +727,20 @@ async def stock_detail(symbol: str):
     return detail
 
 
+@app.get("/api/stocks/{symbol}/floorsheet")
+async def stock_floorsheet(symbol: str):
+    try:
+        rows = await sharesansar_fetcher.get_floorsheet(symbol)
+        return {"floorsheet": (rows or [])[:200]}
+    except Exception as e:
+        logger.error("Floorsheet fetch failed for %s: %s", symbol, e)
+        return {"floorsheet": []}
+
+
 @app.get("/api/signals")
 async def get_signals(signal_type: str = ""):
     async with async_session() as session:
-        q = select(Signal).order_by(desc(Signal.confidence), Signal.generated_at)
+        q = select(Signal).order_by(desc(Signal.confidence), Signal.generated_at).limit(200)
         if signal_type:
             q = q.where(Signal.signal_type == signal_type.upper())
         result = await session.execute(q)
@@ -690,8 +758,12 @@ async def get_signals(signal_type: str = ""):
 
 @app.post("/api/signals/generate")
 async def trigger_signals():
-    await generate_signals()
-    return {"status": "done"}
+    try:
+        await generate_signals()
+        return {"status": "done"}
+    except Exception as e:
+        logger.error("Signal generation failed: %s", e)
+        raise HTTPException(status_code=500, detail="Signal generation failed")
 
 
 @app.post("/api/backtest")
@@ -706,7 +778,7 @@ async def backtest(symbol: str = "NABIL", fast_ma: int = 20, slow_ma: int = 50, 
 async def get_portfolio():
     async with async_session() as session:
         rows = await session.execute(
-            select(PortfolioHolding).order_by(PortfolioHolding.created_at.desc())
+            select(PortfolioHolding).order_by(PortfolioHolding.created_at.desc()).limit(500)
         )
         holdings = [r.to_dict() for r in rows.scalars().all()]
 
@@ -815,6 +887,21 @@ async def compare_stocks(symbols: str = ""):
     live = await _fetch_live_all()
     live_map = {c.get("symbol", "").upper(): c for c in live}
     
+    records_by_symbol = {}
+    try:
+        async with async_session() as session:
+            rows = await session.execute(
+                select(DailyPrice)
+                .where(DailyPrice.symbol.in_(sym_list))
+                .order_by(DailyPrice.date)
+            )
+            for r in rows.scalars().all():
+                records_by_symbol.setdefault(r.symbol, []).append(r.to_dict())
+    except Exception as e:
+        logger.debug("Failed to batch query daily prices: %s", e)
+
+    market_status = get_market_status()
+
     result = []
     for sym in sym_list:
         l = live_map.get(sym, {})
@@ -829,24 +916,17 @@ async def compare_stocks(symbols: str = ""):
             "market_cap": l.get("market_cap"),
         }
         try:
-            async with async_session() as session:
-                rows = await session.execute(
-                    select(DailyPrice)
-                    .where(DailyPrice.symbol == sym)
-                    .order_by(DailyPrice.date)
-                    .limit(120)
-                )
-                records = [r.to_dict() for r in rows.scalars().all()]
+            records = records_by_symbol.get(sym, [])
             if len(records) < 2:
                 records = await _fetch_yonepse_history(sym, 120)
-            today_candle = await _get_live_candle(sym)
-            if today_candle and (not records or records[-1].get("date") != date.today().isoformat()):
-                records.append(today_candle)
+            if market_status.get('is_open'):
+                today_candle = await _get_live_candle(sym)
+                if today_candle and (not records or records[-1].get("date") != date.today().isoformat()):
+                    records.append(today_candle)
             if len(records) >= 2:
                 records.sort(key=lambda r: r.get("date", ""))
                 item["prices"] = records
             if len(records) >= 20:
-                import pandas as pd
                 df = pd.DataFrame(records)
                 indicators = compute_indicators(df)
                 sig_type, confidence, reason = compute_signal(indicators)
@@ -937,11 +1017,13 @@ async def get_ipos(page: int = 1, per_page: int = 20):
 
 @app.get("/api/brokers/top")
 async def brokers_top(period: str = "monthly", limit: int = 20):
+    await _ensure_broker_cache()
     return {"brokers": get_top_brokers(period=period, limit=limit)}
 
 
 @app.get("/api/brokers/search")
 async def brokers_search(q: str = ""):
+    await _ensure_broker_cache()
     return {"brokers": search_brokers(q)}
 
 
@@ -972,9 +1054,10 @@ GUIDE_SYSTEM_PROMPT = (
     "4. If the question is NOT about Nepali stocks, trading, or investing, say:\n"
     "   'I can only answer questions about NEPSE trading and the Nepali stock market.'\n"
     "5. Cite official sources when possible (SEBON, CDSC, NEPSE).\n"
-    "6. Be concise, factual, and use bullet points when helpful.\n"
+    "6. Answer in exactly 2-3 short sentences. Be direct. No bullet points.\n"
     "7. If you don't know something, say so honestly.\n"
-    "8. Keep answers under 300 words."
+    "8. The risk warning must be a single short sentence at the end.\n"
+    "KEEP YOUR ANSWER TO 2-3 SENTENCES."
 )
 
 
@@ -986,8 +1069,7 @@ async def guide_search(q: str = ""):
     if entry:
         return {"entry": entry}
     try:
-        import httpx
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=180) as client:
             resp = await client.post(
                 f"{OLLAMA_URL}/api/chat",
                 json={
@@ -1002,7 +1084,8 @@ async def guide_search(q: str = ""):
             )
             data = resp.json()
             llm_answer = data.get("message", {}).get("content", "")
-    except Exception:
+    except Exception as e:
+        logger.error("Guide search Ollama failed: %s", e)
         llm_answer = ""
 
     return {"entry": None, "llm_answer": llm_answer or None, "popular": get_popular_entries()}
@@ -1010,6 +1093,7 @@ async def guide_search(q: str = ""):
 
 @app.get("/api/guide/brokers")
 async def guide_brokers(search: str = ""):
+    await _ensure_broker_cache()
     return {"brokers": search_brokers(search)}
 
 
@@ -1040,6 +1124,19 @@ async def build_data_context(symbols: list[str]) -> str:
 
     lines = [f"=== REAL MARKET DATA (retrieved {now_str} NST) ==="]
 
+    records_by_symbol = {}
+    try:
+        async with async_session() as session:
+            rows = await session.execute(
+                select(DailyPrice)
+                .where(DailyPrice.symbol.in_([s.upper() for s in symbols[:5]]))
+                .order_by(DailyPrice.symbol, DailyPrice.date.desc())
+            )
+            for r in rows.scalars().all():
+                records_by_symbol.setdefault(r.symbol, []).append(r.to_dict())
+    except Exception:
+        pass
+
     for sym in symbols[:5]:
         sym_u = sym.upper()
         l = live_map.get(sym_u, {})
@@ -1057,43 +1154,35 @@ async def build_data_context(symbols: list[str]) -> str:
             lines.append(f"  Volume: {int(vol):,}")
 
         try:
-            async with async_session() as session:
-                rows = await session.execute(
-                    select(DailyPrice)
-                    .where(DailyPrice.symbol == sym_u)
-                    .order_by(DailyPrice.date.desc())
-                    .limit(120)
-                )
-                records = [r.to_dict() for r in rows.scalars().all()]
-                if len(records) >= 20:
-                    import pandas as pd
-                    df = pd.DataFrame(records)
-                    indicators = compute_indicators(df)
-                    sig_type, confidence, reason = compute_signal(indicators)
+            records = records_by_symbol.get(sym_u, [])
+            if len(records) >= 20:
+                df = pd.DataFrame(records)
+                indicators = compute_indicators(df)
+                sig_type, confidence, reason = compute_signal(indicators)
 
-                    rsi = indicators.get("rsi")
-                    if rsi is not None:
-                        lines.append(f"  RSI: {rsi:.1f}")
+                rsi = indicators.get("rsi")
+                if rsi is not None:
+                    lines.append(f"  RSI: {rsi:.1f}")
 
-                    macd = indicators.get("macd")
-                    macd_sig = indicators.get("macd_signal")
-                    if macd is not None and macd_sig is not None:
-                        status = "Bullish" if macd > macd_sig else "Bearish"
-                        lines.append(f"  MACD: {status} (MACD: {macd:.2f}, Signal: {macd_sig:.2f})")
+                macd = indicators.get("macd")
+                macd_sig = indicators.get("macd_signal")
+                if macd is not None and macd_sig is not None:
+                    status = "Bullish" if macd > macd_sig else "Bearish"
+                    lines.append(f"  MACD: {status} (MACD: {macd:.2f}, Signal: {macd_sig:.2f})")
 
-                    sma20 = indicators.get("sma20")
-                    if sma20 is not None:
-                        lines.append(f"  SMA20: {sma20:.2f}")
-                    sma50 = indicators.get("sma50")
-                    if sma50 is not None:
-                        lines.append(f"  SMA50: {sma50:.2f}")
+                sma20 = indicators.get("sma20")
+                if sma20 is not None:
+                    lines.append(f"  SMA20: {sma20:.2f}")
+                sma50 = indicators.get("sma50")
+                if sma50 is not None:
+                    lines.append(f"  SMA50: {sma50:.2f}")
 
-                    adx = indicators.get("adx")
-                    if adx is not None:
-                        trend = "Strong" if adx >= 25 else "Weak"
-                        lines.append(f"  ADX: {adx:.1f} ({trend} trend)")
+                adx = indicators.get("adx")
+                if adx is not None:
+                    trend = "Strong" if adx >= 25 else "Weak"
+                    lines.append(f"  ADX: {adx:.1f} ({trend} trend)")
 
-                    lines.append(f"  Signal: {sig_type} (confidence: {confidence}%)")
+                lines.append(f"  Signal: {sig_type} (confidence: {confidence}%)")
         except Exception:
             lines.append("  Technical indicators: not available")
 
@@ -1134,8 +1223,8 @@ async def _stream_llm(system_prompt: str, question: str, max_tokens: int, timeou
                             except json.JSONDecodeError:
                                 pass
             return
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("OpenRouter stream failed: %s", e)
 
     try:
         async with httpx.AsyncClient(timeout=timeout_secs) as client:
@@ -1161,7 +1250,8 @@ async def _stream_llm(system_prompt: str, question: str, max_tokens: int, timeou
                             yield chunk["message"]["content"]
                     except json.JSONDecodeError:
                         pass
-    except Exception:
+    except Exception as e:
+        logger.error("Ollama stream failed: %s", e)
         yield ""  # Signal failure — caller will use fallback
 
 
@@ -1169,9 +1259,23 @@ async def _generate_answer(req: QuestionRequest):
     question = req.question.strip()
 
     if not question:
-        yield json.dumps({"type": "token", "token": "Please ask a question about NEPSE stocks or trading."})
-        yield json.dumps({"type": "done"})
+        yield json.dumps({"type": "token", "token": "Please ask a question about NEPSE stocks or trading."}) + "\n"
+        yield json.dumps({"type": "done"}) + "\n"
         return
+
+    NON_NEPSE_TOPICS = [
+        "recipe", "cook", "bake", "movie", "song", "music", "album",
+        "weather", "climate", "sports", "football", "cricket", "goal",
+        "game", "play", "video game", "political", "election", "party",
+        "travel", "hotel", "restaurant", "fashion", "celebrity",
+    ]
+    ql = question.lower()
+    if any(t in ql for t in NON_NEPSE_TOPICS):
+        yield json.dumps({"type": "token", "token": "I can only answer questions about NEPSE trading and the Nepali stock market."}) + "\n"
+        yield json.dumps({"type": "done"}) + "\n"
+        return
+
+    yield json.dumps({"type": "status", "status": "analyzing"}) + "\n"
 
     chart_match = re.search(r'(?:show\s+)?(?:me\s+)?(?:graph|chart)\s+(?:of\s+)?([A-Za-z]{2,10})\b', question, re.IGNORECASE)
     if chart_match:
@@ -1203,12 +1307,13 @@ async def _generate_answer(req: QuestionRequest):
         if cached:
             data_context = cached
         else:
+            yield json.dumps({"type": "status", "status": "searching"}) + "\n"
             data_context = await build_data_context(symbols)
             if data_context:
                 data_cache_set(ctx_key, data_context)
     elif intent == "overview":
+        yield json.dumps({"type": "status", "status": "searching"}) + "\n"
         try:
-            from data.fetcher import fetch_top_stocks, fetch_indices, fetch_market_summary
             tops, indices, summary = await asyncio.gather(
                 fetch_top_stocks(), fetch_indices(), fetch_market_summary(), return_exceptions=True
             )
@@ -1236,44 +1341,30 @@ async def _generate_answer(req: QuestionRequest):
             pass
 
     if intent == "guide" or not data_context:
-        system_prompt = (
-            "You are a NEPSE trading guide assistant.\n"
-            "RULES:\n"
-            "1. Never predict future stock prices. Say 'I cannot guarantee future prices, but here is my analysis.'\n"
-            "2. You MAY offer suggestions based on data, framed as analysis, not recommendations.\n"
-            "3. ALWAYS include: 'The stock market involves risk. This is not financial advice.'\n"
-            "4. Cite official sources (SEBON, CDSC, NEPSE) when possible.\n"
-            "5. Be concise (3-5 sentences). Use plain text. No emojis.\n"
-            "6. If you don't know, say so.\n"
-            "7. Only answer NEPSE-related questions.\n"
-            "8. Use dashes (-) for lists."
-        )
+        system_prompt = GUIDE_SYSTEM_PROMPT
     else:
-        system_prompt = (
-            "You are a NEPSE trading data analyst answering based on provided data.\n"
-            "RULES:\n"
-            "1. Answer ONLY using the provided REAL market data below. Do not invent figures.\n"
-            "2. If a metric is not in the data, say it's unavailable.\n"
-            "3. Never predict future prices. Say 'I cannot guarantee future prices, but here is my analysis.'\n"
-            "4. You MAY offer analysis-based suggestions. Frame as analysis, not recommendations.\n"
-            "5. ALWAYS include: 'The stock market involves risk. This is not financial advice.'\n"
-            "6. Cite NEPSE as the data source.\n"
-            "7. Be concise (3-5 sentences). Use plain text. No emojis.\n"
-            "8. Use dashes (-) for lists."
+        system_prompt = GUIDE_SYSTEM_PROMPT + (
+            "\n\nADDITIONAL RULES (data analyst mode):\n"
+            "1. Prioritize the provided REAL market data below for metrics (prices, RSI, volume, etc.).\n"
+            "2. If a metric is not in the data, you may use general market knowledge from your training.\n"
+            "3. If you are unsure about a specific figure, say so.\n"
+            "4. Cite NEPSE as the data source.\n"
+            "KEEP YOUR ANSWER TO 2-3 SENTENCES."
         )
 
     if data_context:
         system_prompt += (
             "\n\nPROVIDED DATA:\n" + data_context +
-            "\n\nAnswer using this data only."
+            "\n\nUse this data for metrics when available."
         )
 
     yield json.dumps({"type": "meta", "suggested_page": suggested_page, "symbol": symbol,
                        "symbol_match_type": match_type, "start_date": start_date.isoformat() if start_date else None,
-                       "end_date": end_date.isoformat() if end_date else None})
+                       "end_date": end_date.isoformat() if end_date else None}) + "\n"
 
-    max_tokens = 512 if intent == "compare" else 256
-    timeout_secs = 60 if intent == "compare" else 30
+    yield json.dumps({"type": "status", "status": "thinking"}) + "\n"
+    max_tokens = 250 if intent == "compare" else 150
+    timeout_secs = 180 if intent == "compare" else 120
     answer_parts: list[str] = []
     token_count = 0
 
@@ -1282,9 +1373,9 @@ async def _generate_answer(req: QuestionRequest):
             if token:
                 answer_parts.append(token)
                 token_count += 1
-                yield json.dumps({"type": "token", "token": token})
-    except Exception:
-        pass
+                yield json.dumps({"type": "token", "token": token}) + "\n"
+    except Exception as e:
+        logger.error("_generate_answer streaming failed: %s", e)
 
     answer = "".join(answer_parts)
     if not answer or token_count == 0:
@@ -1295,9 +1386,9 @@ async def _generate_answer(req: QuestionRequest):
             "- 'Top gainers today'\n"
             "- 'How do I start trading?'"
         )
-        yield json.dumps({"type": "token", "token": answer})
+        yield json.dumps({"type": "token", "token": answer}) + "\n"
 
-    yield json.dumps({"type": "done"})
+    yield json.dumps({"type": "done"}) + "\n"
 
 
 @app.post("/api/ask")
@@ -1317,17 +1408,32 @@ async def health():
         logger.warning("Health check DB failed: %s", e)
 
     from data.fetcher import circuit_breaker as fetcher_cb
-    from data.nepalstock_fetcher import circuit_breaker as nepse_cb
     from data.merolagani_fetcher import circuit_breaker as mero_cb
+    from data.sharesansar_fetcher import circuit_breaker as ss_cb
 
     sources = {
         'yonepse': fetcher_cb.status('yonepse/live'),
         'merolagani': mero_cb.status('merolagani'),
-        'nepalstock': nepse_cb.status('nepalstock'),
+        'sharesansar': ss_cb.status('sharesansar'),
         'nepalipaisa': fetcher_cb.status('nepalipaisa/ipo'),
     }
 
     scheduler_ts = scheduler.get_last_good_timestamps()
+
+    ollama_ok = False
+    ollama_error = None
+    try:
+        async with httpx.AsyncClient(timeout=3) as c:
+            r = await c.get(f"{OLLAMA_URL}/api/tags")
+            if r.status_code == 200:
+                base = OLLAMA_MODEL.split(":")[0]
+                ollama_ok = any(m.get("name", "").startswith(base) for m in r.json().get("models", []))
+            else:
+                ollama_error = f"status {r.status_code}"
+    except Exception as e:
+        ollama_error = str(e)
+    if ollama_error:
+        logger.warning("Ollama health check: %s", ollama_error)
 
     return {
         "status": "ok" if db_ok else "degraded",
@@ -1335,4 +1441,5 @@ async def health():
         "database": "connected" if db_ok else "error",
         "sources": sources,
         "scheduler": scheduler_ts,
+        "ollama": {"running": ollama_ok, "model": OLLAMA_MODEL},
     }

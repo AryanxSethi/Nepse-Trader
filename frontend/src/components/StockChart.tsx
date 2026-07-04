@@ -3,9 +3,18 @@ import { createChart, ColorType, CandlestickSeries, LineSeries } from 'lightweig
 import type { PricePoint, Indicators } from '../types'
 import { WarningIcon } from './Icons'
 
+interface OverlayData {
+  vwap?: number
+  prevClose?: number
+  high52w?: number
+  low52w?: number
+  pivot?: { s3?: number; s2?: number; s1?: number; pp?: number; r1?: number; r2?: number; r3?: number }
+}
+
 interface Props {
   data: PricePoint[]
   indicators?: Indicators
+  overlays?: OverlayData
   height?: number
 }
 
@@ -13,7 +22,7 @@ function getCSSVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
-export default function StockChart({ data, indicators, height = 420 }: Props) {
+export default function StockChart({ data, indicators, overlays, height = 420 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null)
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
@@ -23,6 +32,10 @@ export default function StockChart({ data, indicators, height = 420 }: Props) {
     sma20: false,
     sma50: false,
     bollinger: false,
+    vwap: false,
+    pivot: false,
+    prevClose: false,
+    range52w: false,
   })
 
   useEffect(() => {
@@ -130,6 +143,54 @@ export default function StockChart({ data, indicators, height = 420 }: Props) {
         chart.addSeries(LineSeries, { color: '#a78bfa', lineWidth: 1, lineStyle: 2, title: 'BB Middle' }).setData(middle)
       }
 
+      if (showIndicators.vwap && overlays?.vwap) {
+        const vwapLine = validData.map((d) => ({ time: d.date, value: overlays.vwap! }))
+        chart.addSeries(LineSeries, {
+          color: '#22d3ee', lineWidth: 1, lineStyle: 3, title: 'VWAP',
+        }).setData(vwapLine)
+      }
+
+      if (showIndicators.prevClose && overlays?.prevClose) {
+        const pcLine = validData.map((d) => ({ time: d.date, value: overlays.prevClose! }))
+        chart.addSeries(LineSeries, {
+          color: '#6b7280', lineWidth: 1, lineStyle: 3, title: 'Prev Close',
+        }).setData(pcLine)
+      }
+
+      if (showIndicators.range52w && overlays?.high52w) {
+        const hiLine = validData.map((d) => ({ time: d.date, value: overlays.high52w! }))
+        chart.addSeries(LineSeries, {
+          color: '#22c55e', lineWidth: 1, lineStyle: 3, title: '52W High',
+        }).setData(hiLine)
+      }
+      if (showIndicators.range52w && overlays?.low52w) {
+        const loLine = validData.map((d) => ({ time: d.date, value: overlays.low52w! }))
+        chart.addSeries(LineSeries, {
+          color: '#ef4444', lineWidth: 1, lineStyle: 3, title: '52W Low',
+        }).setData(loLine)
+      }
+
+      if (showIndicators.pivot && overlays?.pivot) {
+        const pivot = overlays.pivot
+        const pivotLevels = [
+          { val: pivot.r3, color: '#22c55e', title: 'R3' },
+          { val: pivot.r2, color: '#4ade80', title: 'R2' },
+          { val: pivot.r1, color: '#86efac', title: 'R1' },
+          { val: pivot.pp, color: '#3b82f6', title: 'PP' },
+          { val: pivot.s1, color: '#fca5a5', title: 'S1' },
+          { val: pivot.s2, color: '#f87171', title: 'S2' },
+          { val: pivot.s3, color: '#ef4444', title: 'S3' },
+        ]
+        for (const { val, color, title } of pivotLevels) {
+          if (val != null) {
+            const pts = validData.map((d) => ({ time: d.date, value: val! }))
+            chart.addSeries(LineSeries, {
+              color, lineWidth: 1, lineStyle: 3, title,
+            }).setData(pts)
+          }
+        }
+      }
+
       chart.timeScale().fitContent()
 
       resizeObserverRef.current = new ResizeObserver(() => {
@@ -149,7 +210,7 @@ export default function StockChart({ data, indicators, height = 420 }: Props) {
       console.error('[StockChart] Render error:', err)
       setRenderError(true)
     }
-  }, [data, chartType, showIndicators, height, indicators])
+  }, [data, chartType, showIndicators, height, indicators, overlays])
 
   if (data.length === 0) {
     return (
@@ -202,8 +263,41 @@ export default function StockChart({ data, indicators, height = 420 }: Props) {
           onClick={() => setShowIndicators((p) => ({ ...p, bollinger: !p.bollinger }))}
           className={`px-2 py-0.5 rounded text-xs ${showIndicators.bollinger ? 'bg-purple/15 text-purple-400' : 'text-text-muted hover:text-text'}`}
         >
-          Bollinger
+          BB
         </button>
+        <div className="w-px h-4 bg-border mx-1" />
+        {overlays?.vwap && (
+          <button
+            onClick={() => setShowIndicators((p) => ({ ...p, vwap: !p.vwap }))}
+            className={`px-2 py-0.5 rounded text-xs ${showIndicators.vwap ? 'bg-cyan/15 text-cyan' : 'text-text-muted hover:text-text'}`}
+          >
+            VWAP
+          </button>
+        )}
+        {overlays?.pivot && (
+          <button
+            onClick={() => setShowIndicators((p) => ({ ...p, pivot: !p.pivot }))}
+            className={`px-2 py-0.5 rounded text-xs ${showIndicators.pivot ? 'bg-blue/15 text-blue-400' : 'text-text-muted hover:text-text'}`}
+          >
+            Pivot
+          </button>
+        )}
+        {overlays?.prevClose && (
+          <button
+            onClick={() => setShowIndicators((p) => ({ ...p, prevClose: !p.prevClose }))}
+            className={`px-2 py-0.5 rounded text-xs ${showIndicators.prevClose ? 'bg-gray/15 text-gray-400' : 'text-text-muted hover:text-text'}`}
+          >
+            Prev
+          </button>
+        )}
+        {overlays?.high52w && overlays?.low52w && (
+          <button
+            onClick={() => setShowIndicators((p) => ({ ...p, range52w: !p.range52w }))}
+            className={`px-2 py-0.5 rounded text-xs ${showIndicators.range52w ? 'bg-green/15 text-green' : 'text-text-muted hover:text-text'}`}
+          >
+            52W
+          </button>
+        )}
       </div>
       <div ref={containerRef} style={{ width: '100%', minHeight: height }} />
     </div>

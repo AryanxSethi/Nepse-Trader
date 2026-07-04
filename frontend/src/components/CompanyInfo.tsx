@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { formatNPR } from '../utils/format'
+import { SkeletonCompanyInfo } from './Skeleton'
 
 interface CompanyDetail {
   sector?: string
@@ -12,6 +13,18 @@ interface CompanyDetail {
   '52w_range'?: string
   '120d_avg'?: string
   '1y_yield'?: string
+  vwap?: string
+  prev_close?: string
+  volume?: string
+  '180d_avg'?: string
+  confidence_score?: string
+  pivot_s3?: string
+  pivot_s2?: string
+  pivot_s1?: string
+  pivot_pp?: string
+  pivot_r1?: string
+  pivot_r2?: string
+  pivot_r3?: string
   [key: string]: string | undefined
 }
 
@@ -32,33 +45,44 @@ function InfoRow({ label, value, className }: { label: string; value: string | u
 export default function CompanyInfo({ symbol }: Props) {
   const [detail, setDetail] = useState<CompanyDetail | null>(null)
   const [loading, setLoading] = useState(false)
+  const [pivotOpen, setPivotOpen] = useState(false)
 
   useEffect(() => {
     if (!symbol) return
-    let cancelled = false
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10000)
     setLoading(true)
-    fetch(`/api/stocks/${encodeURIComponent(symbol)}/detail`)
+    fetch(`/api/stocks/${encodeURIComponent(symbol)}/detail`, { signal: controller.signal })
       .then(r => r.json())
-      .then(data => { if (!cancelled) setDetail(data) })
-      .catch(() => { if (!cancelled) setDetail({}) })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+      .then(data => { if (!controller.signal.aborted) setDetail(data) })
+      .catch(() => { if (!controller.signal.aborted) setDetail({}) })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); clearTimeout(timeout) })
+    return () => { controller.abort(); clearTimeout(timeout) }
   }, [symbol])
 
-  if (loading) {
-    return (
-      <div className="rounded-xl bg-surface-card border border-border p-4">
-        <div className="animate-shimmer h-4 w-24 rounded mb-3" />
-        <div className="space-y-1.5">
-          {[1, 2, 3, 4, 5, 6, 7].map(i => (
-            <div key={i} className="animate-shimmer h-5 rounded" style={{ width: `${90 - i * 5}%` }} />
-          ))}
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <SkeletonCompanyInfo />
 
   if (!detail || Object.keys(detail).length === 0) return null
+
+  const hasVwap = detail.vwap && detail.market_price
+  const vwapDiff = hasVwap
+    ? parseFloat(detail.market_price!.replace(/[^0-9.]/g, '')) - parseFloat(detail.vwap!.replace(/[^0-9.]/g, ''))
+    : null
+  const vwapLabel = vwapDiff != null ? (vwapDiff < 0 ? 'BELOW' : 'ABOVE') : null
+  const vwapClass = vwapDiff != null ? (vwapDiff < 0 ? 'text-green' : 'text-red') : ''
+
+  const hasPivot = detail.pivot_s3 || detail.pivot_s2 || detail.pivot_s1 || detail.pivot_pp
+  const pivotLevels = hasPivot ? [
+    { label: 'R3', key: 'pivot_r3' },
+    { label: 'R2', key: 'pivot_r2' },
+    { label: 'R1', key: 'pivot_r1' },
+    { label: 'PP', key: 'pivot_pp' },
+    { label: 'S1', key: 'pivot_s1' },
+    { label: 'S2', key: 'pivot_s2' },
+    { label: 'S3', key: 'pivot_s3' },
+  ] : []
+
+  const mktPrice = detail.market_price ? parseFloat(detail.market_price.replace(/[^0-9.]/g, '')) : null
 
   return (
     <motion.div
@@ -88,7 +112,74 @@ export default function CompanyInfo({ symbol }: Props) {
           value={detail['1y_yield']}
           className={detail['1y_yield']?.startsWith('-') ? 'text-red' : 'text-green'}
         />
+        <div className="border-t border-border/40 my-1.5" />
+        {detail.vwap && (
+          <InfoRow
+            label="VWAP"
+            value={`${formatNPR(detail.vwap.replace(/[^0-9.]/g, ''))}${vwapLabel ? `  [${vwapLabel}]` : ''}`}
+            className={vwapClass}
+          />
+        )}
+        <InfoRow label="Previous Close" value={detail.prev_close ? formatNPR(detail.prev_close.replace(/[^0-9.]/g, '')) : undefined} />
+        <InfoRow label="180 Day Avg" value={detail['180d_avg'] ? formatNPR(detail['180d_avg'].replace(/[^0-9.]/g, '')) : undefined} />
+        {detail.volume && (
+          <InfoRow label="Volume" value={parseInt(detail.volume).toLocaleString()} />
+        )}
+        {detail.confidence_score && (
+          <InfoRow
+            label="Confidence"
+            value={detail.confidence_score}
+            className={detail.confidence_score === 'High' ? 'text-green' : detail.confidence_score === 'Low' ? 'text-red' : 'text-yellow'}
+          />
+        )}
       </div>
+
+      {hasPivot && (
+        <>
+          <button
+            onClick={() => setPivotOpen(!pivotOpen)}
+            className="w-full flex items-center justify-between mt-2 px-3 py-2 rounded-lg hover:bg-surface-hover transition-colors text-xs font-medium text-text-muted"
+          >
+            <span>Pivot Analysis</span>
+            <span className={`transition-transform ${pivotOpen ? 'rotate-180' : ''}`}>▾</span>
+          </button>
+          <AnimatePresence>
+            {pivotOpen && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="space-y-0.5 pt-1">
+                  {pivotLevels.map(({ label, key }) => {
+                    const val = detail[key]
+                    if (!val) return null
+                    const numVal = parseFloat(val.replace(/[^0-9.]/g, ''))
+                    const isNear = mktPrice != null && numVal > 0
+                      && Math.abs(mktPrice - numVal) / numVal < 0.005
+                    return (
+                      <div
+                        key={key}
+                        className={`flex items-center justify-between py-1 px-3 rounded-lg text-xs ${
+                          isNear ? 'bg-accent/10 ring-1 ring-accent/30' : 'hover:bg-surface-hover'
+                        } transition-colors`}
+                      >
+                        <span className="text-text-muted font-medium">{label}</span>
+                        <span className={`font-semibold tabular-nums ${
+                          label.startsWith('R') ? 'text-green' : label.startsWith('S') ? 'text-red' : 'text-accent'
+                        }`}>
+                          {formatNPR(numVal)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
     </motion.div>
   )
 }

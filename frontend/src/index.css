@@ -12,6 +12,14 @@
   --color-green: #22c55e;
   --color-red: #ef4444;
   --color-yellow: #eab308;
+  --color-orange: #f97316;
+  --color-purple: #a855f7;
+  --color-cyan: #06b6d4;
+  --color-blue: #3b82f6;
+  --color-gray: #64748b;
+  --color-purple-400: #c084fc;
+  --color-blue-400: #60a5fa;
+  --color-gray-400: #9ca3af;
 }
 
 :root {
@@ -74,7 +82,24 @@ h3 { font-size: 0.9375rem; }
 .animate-shimmer {
   background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-hover) 50%, var(--bg-card) 75%);
   background-size: 200% 100%;
-  animation: shimmer 1.5s ease-in-out infinite;
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+
+.carousel-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+.animate-shake {
+  animation: shake 0.3s ease-in-out;
 }
 .animate-fade-in { animation: fadeIn 0.3s ease-out; }
 .animate-slide-in { animation: slideIn 0.25s ease-out; }

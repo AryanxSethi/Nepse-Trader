@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Date
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Date, Index, UniqueConstraint
 from database import Base
 from datetime import datetime, timezone
 
@@ -15,6 +15,11 @@ class Security(Base):
 
 class DailyPrice(Base):
     __tablename__ = "daily_prices"
+
+    __table_args__ = (
+        Index('ix_daily_price_symbol_date', 'symbol', 'date'),
+        UniqueConstraint('symbol', 'date', name='uq_daily_price_symbol_date'),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, index=True)

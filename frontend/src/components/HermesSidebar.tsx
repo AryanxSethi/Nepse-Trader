@@ -57,7 +57,9 @@ export default function HermesSidebar({ onSelectSymbol, currentSymbol }: Props) 
         }
       }
       setPrices(map)
-    } catch {}
+    } catch (e) {
+      console.warn('Failed to refresh prices', e)
+    }
   }, [watchlist])
 
   useEffect(() => {

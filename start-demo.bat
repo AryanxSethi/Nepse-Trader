@@ -44,8 +44,9 @@ echo Done.
 
 :: 5. Start FastAPI backend
 echo [5/6] Starting Backend (port 8001)...
+for /f "tokens=5" %%a in ('netstat -ano ^| find ":8001" ^| find "LISTENING"') do taskkill /f /pid %%a >nul 2>&1
 set PYTHONPATH=%CD%\backend
-start "NEPSE Backend" cmd /c "cd /d D:\nepse-hermes-trader\backend && python -m uvicorn main:app --port 8001 --reload"
+start "NEPSE Backend" cmd /c "cd /d D:\nepse-hermes-trader\backend && python -m uvicorn main:app --host 127.0.0.1 --port 8001 --reload"
 
 :: 6. Start Vite frontend
 echo [6/6] Starting Frontend (port 5173)...
@@ -55,7 +56,7 @@ start "NEPSE Frontend" cmd /c "cd /d D:\nepse-hermes-trader\frontend && npm run 
 echo Waiting for backend to be ready...
 :wait_loop
 timeout /t 2 /nobreak >nul
-python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health')" >nul 2>&1
+python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/api/health')" >nul 2>&1
 if errorlevel 1 goto wait_loop
 
 :: 8. Open browser

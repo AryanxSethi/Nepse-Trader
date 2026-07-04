@@ -25,7 +25,6 @@ class NepalStockFetcher:
         self._salt2 = 0
         self._column_map: dict[str, str] = {}
         self._css_loaded = False
-        self._semaphore = asyncio.Semaphore(1)
 
     async def _init_client(self):
         if self._client is None:

@@ -129,9 +129,9 @@ export default function Portfolio() {
   const [error, setError] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  const fetchPortfolio = useCallback(async () => {
+  const fetchPortfolio = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/portfolio')
+      const res = await fetch('/api/portfolio', { signal })
       if (res.ok) {
         const d = await res.json()
         setData(d)
@@ -140,7 +140,8 @@ export default function Portfolio() {
       } else {
         setError('Failed to load portfolio data')
       }
-    } catch {
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return
       setError('Failed to load portfolio data')
     } finally {
       setLoading(false)
@@ -148,9 +149,15 @@ export default function Portfolio() {
   }, [])
 
   useEffect(() => {
-    fetchPortfolio()
-    const id = setInterval(fetchPortfolio, 30000)
-    return () => clearInterval(id)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10000)
+    fetchPortfolio(controller.signal).finally(() => clearTimeout(timeout))
+    const id = setInterval(() => {
+      const c = new AbortController()
+      const t = setTimeout(() => c.abort(), 10000)
+      fetchPortfolio(c.signal).finally(() => clearTimeout(t))
+    }, 30000)
+    return () => { clearInterval(id); controller.abort(); clearTimeout(timeout) }
   }, [fetchPortfolio])
 
   const handleDelete = async (id: number) => {

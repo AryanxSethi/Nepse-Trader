@@ -20,6 +20,7 @@ export default function FloatingChat({ symbol, onParsedResult }: Props) {
   const [input, setInput] = useState('')
   const [streamingContent, setStreamingContent] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [llmStatus, setLlmStatus] = useState<string | null>(null)
   const { stream, isPending, error } = useHermesStream()
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -45,10 +46,12 @@ export default function FloatingChat({ symbol, onParsedResult }: Props) {
 
     setIsStreaming(true)
     setStreamingContent('')
+    setLlmStatus('analyzing')
 
     stream(q, {
       onToken: (token) => {
         setStreamingContent((prev) => prev + token)
+        setLlmStatus(null)
       },
       onMeta: (meta) => {
         if (onParsedResult && (meta.symbol || meta.suggested_page)) {
@@ -63,6 +66,7 @@ export default function FloatingChat({ symbol, onParsedResult }: Props) {
         setMessages((prev) => [...prev, { role: 'assistant', content: fullAnswer }])
         setStreamingContent('')
         setIsStreaming(false)
+        setLlmStatus(null)
       },
       onError: () => {
         setMessages((prev) => [...prev, {
@@ -71,6 +75,10 @@ export default function FloatingChat({ symbol, onParsedResult }: Props) {
         }])
         setStreamingContent('')
         setIsStreaming(false)
+        setLlmStatus(null)
+      },
+      onStatus: (status) => {
+        setLlmStatus(status)
       },
     })
   }, [input, isPending, stream, onParsedResult])
@@ -129,10 +137,24 @@ export default function FloatingChat({ symbol, onParsedResult }: Props) {
                   <BrainIcon size={14} className="text-accent shrink-0 mt-1" />
                   <div className="rounded-lg px-3 py-2 text-sm leading-relaxed max-w-[85%] bg-surface-hover text-text">
                     {streamingContent || (
-                      <div className="flex gap-1 py-1">
-                        <span className="w-2 h-2 bg-accent rounded-full animate-pulse" />
-                        <span className="w-2 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: '0.15s' }} />
-                        <span className="w-2 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: '0.3s' }} />
+                      <div className="flex items-center gap-2 py-1">
+                        {llmStatus === 'analyzing' && <span className="text-xs text-text-muted animate-pulse">Analyzing your question...</span>}
+                        {llmStatus === 'searching' && <span className="text-xs text-text-muted animate-pulse">Searching market data...</span>}
+                        {llmStatus === 'thinking' && (
+                          <>
+                            <span className="text-xs text-text-muted animate-pulse">Thinking</span>
+                            <span className="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
+                            <span className="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" style={{ animationDelay: '0.15s' }} />
+                            <span className="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" style={{ animationDelay: '0.3s' }} />
+                          </>
+                        )}
+                        {!llmStatus && (
+                          <div className="flex gap-1 py-1">
+                            <span className="w-2 h-2 bg-accent rounded-full animate-pulse" />
+                            <span className="w-2 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: '0.15s' }} />
+                            <span className="w-2 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: '0.3s' }} />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

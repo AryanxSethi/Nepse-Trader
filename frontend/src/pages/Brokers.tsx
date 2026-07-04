@@ -59,8 +59,9 @@ export default function Brokers() {
   }, [])
 
   useEffect(() => {
+    const controller = new AbortController()
     const t = setTimeout(() => fetchBrokers(query, period), 200)
-    return () => clearTimeout(t)
+    return () => { clearTimeout(t); controller.abort() }
   }, [query, period, fetchBrokers])
 
   const turnoverKey = period === 'daily' ? 'latest_turnover' : 'thirty_days_turnover'

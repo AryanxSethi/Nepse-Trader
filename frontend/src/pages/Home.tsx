@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import SearchBar from '../components/SearchBar'
 import WinnerLoserCard from '../components/WinnerLoserCard'
 import MarketSummaryBar from '../components/MarketSummaryBar'
-import LiveIndexChart from '../components/LiveIndexChart'
 import FloatingChat from '../components/FloatingChat'
 import { SkeletonCard } from '../components/Skeleton'
 import { useMarketOverview } from '../hooks/useStockData'
@@ -54,25 +53,44 @@ export default function Home() {
           </p>
         </div>
 
-        {!isLoading && !error && (
-          <LiveIndexChart />
-        )}
-
         {data?.indices && data.indices.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-2 gap-3 max-w-md mx-auto">
-            {data.indices.filter((idx: { name: string }) => {
-              const n = idx.name.toLowerCase()
-              return n === 'nepse' || n === 'nepse index' || n === 'sensitive index'
-            }).map((idx: { name: string; value: number; change: number; percent_change: number }) => (
-              <div key={idx.name} className="rounded-xl bg-surface-card border border-border p-3">
-                <p className="text-[11px] text-text-muted truncate">{idx.name}</p>
-                <p className="text-lg font-bold text-text mt-1">{formatNPR(idx.value, 2)}</p>
-                <p className={`text-xs font-medium mt-0.5 ${(idx.change ?? 0) >= 0 ? 'text-green' : 'text-red'}`}>
-                  {(idx.change ?? 0) >= 0 ? <TrendingUpIcon size={12} className="inline mr-0.5" /> : <TrendingDownIcon size={12} className="inline mr-0.5" />}
-                  {formatChange(idx.change)}
-                </p>
-              </div>
-            ))}
+          <div className="rounded-xl bg-surface-card border border-border overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+              <TrendingUpIcon size={16} className="text-accent" />
+              <h3 className="text-sm font-semibold text-text">Indices</h3>
+            </div>
+            <div className="overflow-y-auto max-h-[400px]">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-surface-card">
+                  <tr className="border-b border-border text-text-muted text-[11px]">
+                    <th className="text-left px-4 py-2 font-medium">Name</th>
+                    <th className="text-right px-4 py-2 font-medium">Value</th>
+                    <th className="text-right px-4 py-2 font-medium">Change</th>
+                    <th className="text-right px-4 py-2 font-medium">% Chg</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.indices.map((idx: { name: string; value: number; change: number; percent_change: number }) => {
+                    const isPos = (idx.percent_change ?? idx.change ?? 0) >= 0
+                    return (
+                      <tr key={idx.name} className="border-b border-border/50 hover:bg-surface-hover/50 transition-colors">
+                        <td className="px-4 py-2.5 text-text font-medium text-xs truncate max-w-[160px]">{idx.name}</td>
+                        <td className="px-4 py-2.5 text-right font-mono-nums text-text">{formatNPR(idx.value, 2)}</td>
+                        <td className={`px-4 py-2.5 text-right font-mono-nums ${isPos ? 'text-green' : 'text-red'}`}>
+                          <span className="flex items-center justify-end gap-1">
+                            {isPos ? <TrendingUpIcon size={10} /> : <TrendingDownIcon size={10} />}
+                            {formatChange(idx.change)}
+                          </span>
+                        </td>
+                        <td className={`px-4 py-2.5 text-right font-mono-nums ${isPos ? 'text-green' : 'text-red'}`}>
+                          {isPos ? '+' : ''}{idx.percent_change?.toFixed(2)}%
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -137,7 +136,7 @@ class CircuitBreaker:
     def record_failure(self, source: str):
         self._failures[source] = self._failures.get(source, 0) + 1
         if self._failures[source] >= self._threshold:
-            until = asyncio.get_event_loop().time() + self._cooloff
+            until = asyncio.get_running_loop().time() + self._cooloff
             self._open_until[source] = until
             logger.warning('[%s] circuit opened for %.0fs', source, self._cooloff)
 
@@ -145,7 +144,7 @@ class CircuitBreaker:
         until = self._open_until.get(source)
         if until is None:
             return False
-        if asyncio.get_event_loop().time() >= until:
+        if asyncio.get_running_loop().time() >= until:
             self._open_until.pop(source, None)
             self._failures.pop(source, None)
             logger.info('[%s] circuit closed (cooloff expired)', source)
@@ -154,7 +153,7 @@ class CircuitBreaker:
 
     def status(self, source: str) -> str:
         if self.is_open(source):
-            remaining = self._open_until.get(source, 0) - asyncio.get_event_loop().time()
+            remaining = self._open_until.get(source, 0) - asyncio.get_running_loop().time()
             return f'open ({remaining:.0f}s remaining)'
         failures = self._failures.get(source, 0)
         if failures > 0:
