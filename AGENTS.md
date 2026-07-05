@@ -120,14 +120,21 @@ Invoke-WebRequest "http://127.0.0.1:8001/api/guide/search?q=how+to+start+trading
 - `.env` file exists but `load_dotenv()` is never called — custom `OLLAMA_URL` is silently ignored
 - SQLite URL uses `Path.__str__()` which on Windows produces backslashes — fixed via `asyncio.to_thread`
 
+## Virtual Environment
+- Backend runs in `backend/venv/` (Python 3.13.14)
+- Activate: `backend\venv\Scripts\Activate.ps1`
+- Install/update: `pip install -r backend\requirements.txt`
+- Start via: `venv\Scripts\python -m uvicorn main:app --host 127.0.0.1 --port 8001`
+- `.gitignore` includes `backend/venv/`
+
 ## Quick Restart
 ```powershell
 # Kill old
 Get-Process -Name python* | Where-Object { $_.CommandLine -match "uvicorn" } | Stop-Process -Force
 Get-Process -Id (Get-NetTCPConnection -LocalPort 5173).OwningProcess | Stop-Process -Force
 
-# Start backend
-Start-Process -WindowStyle Hidden -FilePath "python" -ArgumentList "-m uvicorn main:app --host 127.0.0.1 --port 8001" -WorkingDirectory "backend"
+# Start backend (venv)
+Start-Process -WindowStyle Hidden -FilePath "venv\Scripts\python" -ArgumentList "-m uvicorn main:app --host 127.0.0.1 --port 8001" -WorkingDirectory "backend"
 
 # Start frontend
 Set-Location frontend; npm run dev

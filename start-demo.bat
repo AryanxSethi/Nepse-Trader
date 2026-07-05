@@ -4,15 +4,14 @@ cd /d D:\nepse-trader
 echo NEPSE Trader - Starting services...
 echo.
 
-:: 1. Install/check Python dependencies
-echo [1/6] Checking Python dependencies...
-where python >nul 2>&1
-if errorlevel 1 (
-    echo Python not found in PATH. Please install Python first.
-    pause
-    exit /b 1
+:: 1. Install/check Python dependencies (venv)
+echo [1/6] Checking Python venv...
+if not exist "backend\venv\Scripts\python.exe" (
+    echo Creating Python venv...
+    python -m venv backend\venv
 )
-pip install -r backend\requirements.txt --quiet 2>nul
+echo Installing/updating dependencies...
+call backend\venv\Scripts\pip install -r backend\requirements.txt --quiet 2>nul
 echo Done.
 
 :: 2. Start Ollama API if not running
@@ -29,10 +28,10 @@ if errorlevel 1 (
 )
 
 :: 3. Seed database if first run
-if not exist data\nepse.db (
+if not exist backend\data\nepse.db (
     echo [3/6] First run detected - seeding database...
     set PYTHONPATH=%CD%\backend
-    python -c "import asyncio; from data.seeder import seed; asyncio.run(seed())"
+    backend\venv\Scripts\python -c "import asyncio; from data.seeder import seed; asyncio.run(seed())"
 ) else (
     echo [3/6] Database already seeded
 )
@@ -42,12 +41,12 @@ echo [4/6] Cleaning cached bytecode...
 for /d /r backend %%d in (__pycache__) do @if exist "%%d" rmdir /s /q "%%d" 2>nul
 echo Done.
 
-:: 5. Start FastAPI backend
+:: 5. Start FastAPI backend (venv)
 echo [5/6] Starting Backend (port 8001)...
 for /f "tokens=5" %%a in ('netstat -ano ^| find ":8001" ^| find "LISTENING"') do taskkill /f /pid %%a >nul 2>&1
 powershell -Command "Get-NetTCPConnection -LocalPort 8001 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }" 2>nul
 set PYTHONPATH=%CD%\backend
-start "NEPSE Backend" cmd /c "cd /d D:\nepse-trader\backend && python -m uvicorn main:app --host 127.0.0.1 --port 8001"
+start "NEPSE Backend" cmd /c "cd /d D:\nepse-trader\backend && venv\Scripts\python -m uvicorn main:app --host 127.0.0.1 --port 8001"
 
 :: 6. Start Vite frontend
 echo [6/6] Starting Frontend (port 5173)...
@@ -57,7 +56,7 @@ start "NEPSE Frontend" cmd /c "cd /d D:\nepse-trader\frontend && npm run dev"
 echo Waiting for backend to be ready...
 :wait_loop
 timeout /t 2 /nobreak >nul
-python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/api/health')" >nul 2>&1
+backend\venv\Scripts\python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/api/health')" >nul 2>&1
 if errorlevel 1 goto wait_loop
 
 :: 8. Open browser

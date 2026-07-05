@@ -12,3 +12,4 @@ slowapi
 python-dotenv
 python-dateutil
 cachetools
+websockets
