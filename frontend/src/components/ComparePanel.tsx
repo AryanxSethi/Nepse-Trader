@@ -4,27 +4,10 @@ import StockChart from './StockChart'
 import { SkeletonBlock } from './Skeleton'
 import { WarningIcon, CompareIcon, CloseIcon } from './Icons'
 import { formatNPR } from '../utils/format'
+import { fetchCompare } from '../api/endpoints'
+import { NetworkError, TimeoutError } from '../api/client'
+import type { CompareItem } from '../api/endpoints'
 
-interface CompareItem {
-  symbol: string
-  name: string
-  ltp: number | null
-  change: number | null
-  percent_change: number | null
-  volume: number | null
-  turnover: number | null
-  market_cap: number | null
-  rsi: number | null
-  macd: number | null
-  macd_signal: number | null
-  sma20: number | null
-  sma50: number | null
-  adx: number | null
-  trend: string | null
-  signal_type: string | null
-  signal_confidence: number | null
-  prices?: { date: string; close: number }[]
-}
 
 function formatNum(n: number | null): string {
   if (n == null) return '\u2014'
@@ -71,27 +54,21 @@ export default function ComparePanel() {
     setError('')
     setData(null)
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 15000)
-    const params = new URLSearchParams({ symbols: `${symbol1},${symbol2}` })
-    fetch(`/api/stocks/compare?${params}`, { signal: controller.signal })
-      .then((r) => {
-        if (!r.ok) throw new Error('Compare fetch failed')
-        return r.json()
-      })
+    fetchCompare([symbol1, symbol2], { signal: controller.signal })
       .then((d) => {
         setData(d.comparison || [])
         setLoading(false)
       })
       .catch((e) => {
         if (e instanceof DOMException && e.name === 'AbortError') return
-        if (e instanceof TypeError) {
-          setError('Network error — check your connection')
+        if (e instanceof NetworkError || e instanceof TimeoutError) {
+          setError(e.message)
         } else {
           setError('Compare data unavailable. Please try again.')
         }
         setLoading(false)
       })
-    return () => { controller.abort(); clearTimeout(timeout) }
+    return () => controller.abort()
   }, [symbol1, symbol2])
 
   const metrics = useMemo(() => [

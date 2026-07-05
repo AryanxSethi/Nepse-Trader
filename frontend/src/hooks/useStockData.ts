@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMarketStatus } from './useMarketStatus'
-
-const API = '/api'
+import { fetchMarketOverview, fetchStockHistory, fetchSignals, fetchBacktest } from '../api/endpoints'
 
 export function useMarketOverview() {
   const { is_open } = useMarketStatus()
@@ -9,11 +8,7 @@ export function useMarketOverview() {
 
   return useQuery({
     queryKey: ['market-overview'],
-    queryFn: async () => {
-      const res = await fetch(`${API}/market/overview`)
-      if (!res.ok) throw new Error('Market data unavailable')
-      return res.json()
-    },
+    queryFn: fetchMarketOverview,
     refetchInterval: interval,
   })
 }
@@ -24,12 +19,7 @@ export function useStockHistory(symbol: string, start: string, end: string) {
 
   return useQuery({
     queryKey: ['stock-history', symbol, start, end],
-    queryFn: async () => {
-      const params = new URLSearchParams({ start, end })
-      const res = await fetch(`${API}/stocks/${symbol}/history?${params}`)
-      if (!res.ok) throw new Error('Stock data unavailable')
-      return res.json()
-    },
+    queryFn: () => fetchStockHistory(symbol, start, end),
     enabled: !!symbol,
     refetchInterval: symbol ? interval : undefined,
   })
@@ -41,12 +31,7 @@ export function useSignals(type?: string) {
 
   return useQuery({
     queryKey: ['signals', type || 'all'],
-    queryFn: async () => {
-      const params = type ? `?signal_type=${type}` : ''
-      const res = await fetch(`${API}/signals${params}`)
-      if (!res.ok) throw new Error('Signals unavailable')
-      return res.json()
-    },
+    queryFn: () => fetchSignals(type),
     refetchInterval: interval,
   })
 }
@@ -54,12 +39,7 @@ export function useSignals(type?: string) {
 export function useBacktest(symbol: string, fast: number, slow: number, days: number, run: boolean) {
   return useQuery({
     queryKey: ['backtest', symbol, fast, slow, days],
-    queryFn: async () => {
-      const params = new URLSearchParams({ symbol, fast_ma: String(fast), slow_ma: String(slow), days: String(days) })
-      const res = await fetch(`${API}/backtest?${params}`, { method: 'POST' })
-      if (!res.ok) throw new Error('Backtest failed')
-      return res.json()
-    },
+    queryFn: () => fetchBacktest(symbol, fast, slow, days),
     enabled: run,
   })
 }

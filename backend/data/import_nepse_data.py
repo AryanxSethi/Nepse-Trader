@@ -12,16 +12,14 @@ from datetime import date, datetime
 
 import httpx
 
+from config import GITHUB_NEPSE_DATA
 from database import async_session, init_db
 from models import DailyPrice, Security
 from sqlalchemy import select
 
 
-GITHUB_RAW = "https://raw.githubusercontent.com/Aabishkar2/nepse-data/main/data/company-wise"
-
-
 async def fetch_csv(symbol: str) -> list[dict] | None:
-    url = f"{GITHUB_RAW}/{symbol}.csv"
+    url = f"{GITHUB_NEPSE_DATA}/{symbol}.csv"
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(url)

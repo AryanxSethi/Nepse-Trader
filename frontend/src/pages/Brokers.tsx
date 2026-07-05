@@ -4,6 +4,7 @@ import RefreshIndicator from '../components/RefreshIndicator'
 import { SearchIcon, CompanyIcon, WarningIcon } from '../components/Icons'
 import { SkeletonBlock } from '../components/Skeleton'
 import type { BrokerDetail } from '../types'
+import { fetchBrokerSearch, fetchBrokerTop } from '../api/endpoints'
 
 interface BrokerData {
   rank: number
@@ -38,14 +39,10 @@ export default function Brokers() {
     setFetchError('')
     try {
         if (q) {
-          const res = await fetch(`/api/brokers/search?q=${encodeURIComponent(q)}`)
-          if (!res.ok) throw new Error(`API error: ${res.status}`)
-          const data = await res.json()
-          setBrokers((data.brokers || []).map((b: BrokerDetail, i: number) => ({ ...b, rank: i + 1 })))
+          const data = await fetchBrokerSearch(q)
+          setBrokers((data.brokers || []).map((b, i: number) => ({ ...b as any, rank: i + 1 })))
         } else {
-          const res = await fetch(`/api/brokers/top?period=${p}&limit=50`)
-          if (!res.ok) throw new Error(`API error: ${res.status}`)
-          const data = await res.json()
+          const data = await fetchBrokerTop(p, 50)
           setBrokers(data.brokers || [])
         }
         setFetchedAt(new Date().toISOString())
@@ -156,12 +153,12 @@ export default function Brokers() {
                   </tr>
                 </thead>
                 <tbody>
-                  {brokers.map((b) => {
+                  {brokers.map((b, i) => {
                     const isTop3 = b.rank <= 3 && !query
                     const rankDisplay = b.rank === 1 ? '#1' : b.rank === 2 ? '#2' : b.rank === 3 ? '#3' : `#${b.rank}`
                     return (
                       <tr
-                        key={b.code}
+                        key={`${b.code}-${i}`}
                         className={`border-b border-border/50 hover:bg-surface-hover/50 transition-colors ${
                           isTop3 ? 'bg-yellow/5' : ''
                         }`}

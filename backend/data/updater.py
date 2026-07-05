@@ -3,6 +3,7 @@ from datetime import date, timedelta
 import httpx
 from sqlalchemy import select, func
 
+from config import YONEPSE_BASE
 from database import async_session
 from models import DailyPrice
 from analysis.signals import generate_signals
@@ -36,7 +37,7 @@ async def update_daily_prices(target_date: date | None = None) -> int:
         target_date = date.today() - timedelta(days=1)
     
     date_str = target_date.strftime("%Y-%m-%d")
-    url = f"https://shubhamnpk.github.io/yonepse/data/ltp/daily/{date_str}.json"
+    url = f"{YONEPSE_BASE}/data/ltp/daily/{date_str}.json"
     
     inserted = 0
     

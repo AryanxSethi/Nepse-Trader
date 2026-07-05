@@ -1,11 +1,10 @@
 import logging
 from datetime import datetime, timezone
 
+from config import NEPALIPAISA_BASE
 from data._http import FetchResult, retry_get_json
 
 logger = logging.getLogger('nepalipaisa_fetcher')
-
-NEPALIPAISA_BASE = 'https://nepalipaisa.com'
 
 STATUS_MAP = {
     'open': 'open',

@@ -58,7 +58,7 @@ export default function WinnerLoserCard({ title, items, type, onSelect, loading 
       <div className="space-y-1">
         {items.slice(0, 5).map((item, i) => (
           <motion.button
-            key={item.symbol}
+            key={`${item.symbol}-${i}`}
             initial={{ opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: i * 0.04 }}

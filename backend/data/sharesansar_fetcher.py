@@ -8,40 +8,37 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup
 
+from config import SHARESANSAR_BASE, SHARESANSAR_TIMEOUT, DEFAULT_USER_AGENT
 from data._http import CircuitBreaker
 
 logger = logging.getLogger('sharesansar_fetcher')
 
-SHARESANSAR_BASE = 'https://www.sharesansar.com'
-TIMEOUT_SEC = 20
-USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-
-circuit_breaker = CircuitBreaker(threshold=3, cooloff=60.0)
-
-_sharesansar_lock = asyncio.Lock()
-
-_CSRF_CACHE: dict[str, Any] = {}
-_CSRF_CACHE_TTL = 300
-_CSRF_CACHE_TIME: float = 0
-
-_indices_table_cache: list[dict] | None = None
-_indices_table_cache_ts: float = 0
-_INDICES_TABLE_TTL = 300
-
-_today_price_cache: dict[str, dict] | None = None
-_today_price_cache_ts: float = 0
-_TODAY_PRICE_TTL = 120
-
-
 class SharesansarFetcher:
+    CIRCUIT_BREAKER_THRESHOLD = 3
+    CIRCUIT_BREAKER_COOLOFF = 60.0
+    CSRF_CACHE_TTL = 300
+    INDICES_TABLE_TTL = 300
+    TODAY_PRICE_TTL = 120
+
     def __init__(self):
         self._client: httpx.AsyncClient | None = None
+        self._circuit_breaker = CircuitBreaker(
+            threshold=self.CIRCUIT_BREAKER_THRESHOLD,
+            cooloff=self.CIRCUIT_BREAKER_COOLOFF,
+        )
+        self._lock = asyncio.Lock()
+        self._csrf_cache: dict[str, Any] = {}
+        self._csrf_cache_time: float = 0
+        self._indices_table_cache: list[dict] | None = None
+        self._indices_table_cache_ts: float = 0
+        self._today_price_cache: dict[str, dict] | None = None
+        self._today_price_cache_ts: float = 0
 
     async def _init_client(self):
         if self._client is None:
             self._client = httpx.AsyncClient(
-                headers={'User-Agent': USER_AGENT},
-                timeout=TIMEOUT_SEC,
+                headers={'User-Agent': DEFAULT_USER_AGENT},
+                timeout=SHARESANSAR_TIMEOUT,
                 follow_redirects=True,
             )
 
@@ -72,30 +69,30 @@ class SharesansarFetcher:
 
     async def _get(self, path: str) -> str | None:
         await self._init_client()
-        if circuit_breaker.is_open('sharesansar'):
+        if self._circuit_breaker.is_open('sharesansar'):
             logger.warning('[sharesansar] circuit open, skipping %s', path)
             return None
         try:
             resp = await self._fetch_with_retry(self._client, f'{SHARESANSAR_BASE}{path}')
             resp.raise_for_status()
-            circuit_breaker.record_success('sharesansar')
+            self._circuit_breaker.record_success('sharesansar')
             return resp.text
         except Exception as e:
-            circuit_breaker.record_failure('sharesansar')
+            self._circuit_breaker.record_failure('sharesansar')
             logger.debug('Sharesansar GET %s failed: %s', path, e)
             return None
 
     async def _post(self, path: str, data: dict[str, str]) -> str | None:
         await self._init_client()
-        if circuit_breaker.is_open('sharesansar'):
+        if self._circuit_breaker.is_open('sharesansar'):
             return None
         try:
             resp = await self._client.post(f'{SHARESANSAR_BASE}{path}', data=data)
             resp.raise_for_status()
-            circuit_breaker.record_success('sharesansar')
+            self._circuit_breaker.record_success('sharesansar')
             return resp.text
         except Exception as e:
-            circuit_breaker.record_failure('sharesansar')
+            self._circuit_breaker.record_failure('sharesansar')
             logger.debug('Sharesansar POST %s failed: %s', path, e)
             return None
 
@@ -189,11 +186,10 @@ class SharesansarFetcher:
         return indices
 
     async def get_today_share_price_for_symbol(self, symbol: str) -> dict | None:
-        global _today_price_cache, _today_price_cache_ts
         now = asyncio.get_running_loop().time()
-        async with _sharesansar_lock:
-            if _today_price_cache is not None and (now - _today_price_cache_ts) <= _TODAY_PRICE_TTL:
-                return _today_price_cache.get(symbol.upper())
+        async with self._lock:
+            if self._today_price_cache is not None and (now - self._today_price_cache_ts) <= self.TODAY_PRICE_TTL:
+                return self._today_price_cache.get(symbol.upper())
         html = await self._get('/today-share-price')
         if not html:
             return None
@@ -237,10 +233,10 @@ class SharesansarFetcher:
                 }
             except (ValueError, IndexError):
                 continue
-        async with _sharesansar_lock:
-            _today_price_cache = all_prices
-            _today_price_cache_ts = now
-        return _today_price_cache.get(symbol.upper())
+        async with self._lock:
+            self._today_price_cache = all_prices
+            self._today_price_cache_ts = now
+        return self._today_price_cache.get(symbol.upper())
 
     async def get_company_detail(self, symbol: str) -> dict:
         html = await self._get(f'/company/{symbol.upper()}')
@@ -424,38 +420,36 @@ class SharesansarFetcher:
         return None
 
     async def _get_csrf_token(self, path: str) -> str | None:
-        global _CSRF_CACHE, _CSRF_CACHE_TIME
         now = asyncio.get_running_loop().time()
-        async with _sharesansar_lock:
-            if _CSRF_CACHE.get('token') and (now - _CSRF_CACHE_TIME) < _CSRF_CACHE_TTL:
-                return _CSRF_CACHE['token']
+        async with self._lock:
+            if self._csrf_cache.get('token') and (now - self._csrf_cache_time) < self.CSRF_CACHE_TTL:
+                return self._csrf_cache['token']
         html = await self._get(path)
         if not html:
             return None
         soup = BeautifulSoup(html, 'html.parser')
         meta = soup.find('meta', attrs={'name': '_token'})
         if meta and meta.get('content'):
-            async with _sharesansar_lock:
-                _CSRF_CACHE['token'] = meta['content']
-                _CSRF_CACHE_TIME = now
+            async with self._lock:
+                self._csrf_cache['token'] = meta['content']
+                self._csrf_cache_time = now
             return meta['content']
         return None
 
     async def get_all_indices(self) -> list[dict]:
-        global _indices_table_cache, _indices_table_cache_ts
         now = asyncio.get_running_loop().time()
-        async with _sharesansar_lock:
-            if _indices_table_cache is not None and (now - _indices_table_cache_ts) < _INDICES_TABLE_TTL:
-                return _indices_table_cache
+        async with self._lock:
+            if self._indices_table_cache is not None and (now - self._indices_table_cache_ts) < self.INDICES_TABLE_TTL:
+                return self._indices_table_cache
         html = await self._get('/market')
         if not html:
             return []
         soup = BeautifulSoup(html, 'html.parser')
         indices = self._parse_market_indices(soup)
         if indices:
-            async with _sharesansar_lock:
-                _indices_table_cache = indices
-                _indices_table_cache_ts = now
+            async with self._lock:
+                self._indices_table_cache = indices
+                self._indices_table_cache_ts = now
         return indices
 
     def _parse_market_indices(self, soup: BeautifulSoup) -> list[dict]:
@@ -483,6 +477,9 @@ class SharesansarFetcher:
             except (ValueError, IndexError):
                 continue
         return indices
+
+    def circuit_breaker_status(self, source: str) -> str:
+        return self._circuit_breaker.status(source)
 
     async def stop(self):
         if self._client:

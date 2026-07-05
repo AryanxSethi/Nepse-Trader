@@ -7,14 +7,15 @@ import pandas as pd
 
 
 async def generate_signals():
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    cutoff = today - timedelta(days=180)
+
     async with async_session() as session:
         securities = await session.execute(select(Security))
         symbols = [(s.symbol, s.name) for s in securities.scalars()]
 
-    cutoff = datetime.now(timezone.utc).date() - timedelta(days=180)
-
-    for sym, name in symbols:
-        async with async_session() as session:
+        for sym, name in symbols:
             rows = await session.execute(
                 select(DailyPrice)
                 .where(DailyPrice.symbol == sym, DailyPrice.date >= cutoff)
@@ -22,19 +23,18 @@ async def generate_signals():
             )
             records = rows.scalars().all()
 
-        if len(records) < 30:
-            continue
+            if len(records) < 30:
+                continue
 
-        df = pd.DataFrame([r.to_dict() for r in records])
-        indicators = compute_indicators(df)
-        signal_type, confidence, reason = compute_signal(indicators)
+            df = pd.DataFrame([r.to_dict() for r in records])
+            indicators = compute_indicators(df)
+            signal_type, confidence, reason = compute_signal(indicators)
 
-        async with async_session() as session:
             existing = await session.execute(
                 select(Signal).where(Signal.symbol == sym).order_by(desc(Signal.generated_at))
             )
             old = existing.scalars().first()
-            if old and old.signal_type == signal_type and old.generated_at.date() == datetime.now(timezone.utc).date():
+            if old and old.signal_type == signal_type and old.generated_at.date() == today:
                 continue
             session.add(Signal(
                 symbol=sym,

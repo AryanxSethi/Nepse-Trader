@@ -4,6 +4,7 @@ import ErrorBanner from '../components/ErrorBanner'
 import RefreshIndicator from '../components/RefreshIndicator'
 import { DocumentIcon, InfoIcon, SourceIcon, ChevronLeftIcon, ChevronRightIcon } from '../components/Icons'
 import { SkeletonBlock } from '../components/Skeleton'
+import { fetchIpos } from '../api/endpoints'
 
 interface IPOItem {
   company: string
@@ -110,15 +111,13 @@ export default function IPOSection() {
   const tableWrapperRef = useRef<HTMLDivElement>(null)
   const [canScrollRight, setCanScrollRight] = useState(false)
 
-  const fetchPage = useCallback(async (p: number, signal?: AbortSignal) => {
+  const fetchPage = useCallback(async (p: number) => {
     setLoading(true)
     setFetchError('')
     try {
-      const r = await fetch(`/api/ipos?page=${p}&per_page=${PAGE_SIZE}`, { signal })
-      if (!r.ok) throw new Error('Failed to load IPO data')
-      const d = await r.json()
-      setItems(d.data || [])
-      setPager(d.pager || null)
+      const result = await fetchIpos(p, PAGE_SIZE)
+      setItems((result.data || []) as unknown as IPOItem[])
+      setPager(result.meta as unknown as Pager)
       setFetchedAt(new Date().toISOString())
     } catch (e: unknown) {
       if (e instanceof Error && e.name !== 'AbortError') {
@@ -133,7 +132,7 @@ export default function IPOSection() {
 
   useEffect(() => {
     const controller = new AbortController()
-    fetchPage(page, controller.signal)
+    fetchPage(page)
     return () => controller.abort()
   }, [page, fetchPage])
 

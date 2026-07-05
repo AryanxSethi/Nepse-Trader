@@ -34,7 +34,7 @@ interface Props {
   currentSymbol?: string
 }
 
-export default function HermesSidebar({ onSelectSymbol, currentSymbol }: Props) {
+export default function AISidebar({ onSelectSymbol, currentSymbol }: Props) {
   const [watchlist, setWatchlist] = useState<string[]>(() => loadWatchlist())
   const [prices, setPrices] = useState<Map<string, WatchlistPrice>>(new Map())
 

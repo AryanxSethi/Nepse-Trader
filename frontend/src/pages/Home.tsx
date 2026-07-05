@@ -70,7 +70,7 @@ export default function Home() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.indices.map((idx: { name: string; value: number; change: number; percent_change: number }) => {
+                  {data.indices.map((idx: { name: string; value: number; change: number; percent_change?: number }) => {
                     const isPos = (idx.percent_change ?? idx.change ?? 0) >= 0
                     return (
                       <tr key={idx.name} className="border-b border-border/50 hover:bg-surface-hover/50 transition-colors">
@@ -97,7 +97,7 @@ export default function Home() {
         {data?.summary && (
           <MarketSummaryBar
             summary={data.summary}
-            lastUpdated={timeAgo(data._fetched_at) || timeAgo(marketStatus.as_of)}
+            lastUpdated={timeAgo(data._fetched_at ?? null) || timeAgo(marketStatus.as_of)}
           />
         )}
 
@@ -156,7 +156,7 @@ export default function Home() {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
               {data.sectors.slice(0, 10).map((s: { name: string; turnover: number }) => {
-                const maxTurnover = Math.max(...data.sectors.slice(0, 10).map((x: { turnover: number }) => x.turnover))
+                const maxTurnover = Math.max(...(data.sectors ?? []).slice(0, 10).map((x: { turnover: number }) => x.turnover))
                 const pct = maxTurnover > 0 ? (s.turnover / maxTurnover) * 100 : 0
                 return (
                   <div key={s.name} className="bg-surface-hover rounded-lg p-2">

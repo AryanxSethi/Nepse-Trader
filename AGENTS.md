@@ -1,116 +1,124 @@
-# NEPSE Hermes Trader — Agent Context
+# NEPSE Trader — Agent Context
 
 ## Goal
-Local PoC agentic trading web app for NEPSE (Nepal Stock Exchange) with Hermes 3 self-learning agent, clean UI, honest AI, fuzzy search, and sourced guide content.
+Local PoC agentic trading web app for NEPSE (Nepal Stock Exchange) with AI assistant, clean UI, honest AI, fuzzy search, and sourced guide content.
 
 ## Architecture
 - **Backend**: Python FastAPI + SQLite (SQLAlchemy async) on port **8001**
 - **Frontend**: React + TypeScript + Vite + Tailwind v4 on port **5173**
-- **AI**: Ollama with `hermes3:latest` model
-- **Data**: yonepse (primary — live prices, summary, indices), Sharesansar (secondary — VWAP, pivots, MA signals, floorsheet, volume), Merolagani (tertiary — SignalR index streaming, 1Y yield, company details)
+- **AI**: Ollama with `qwen2.5:7b-instruct-q4_k_m`
+- **Primary Data**: yonepse (GitHub JSON CDN — live prices, summary, indices, brokers, status)
+- **Secondary Data**: Merolagani (scraped — company detail, SignalR index streaming, index history)
+- **Tertiary Data**: Sharesansar (scraped — VWAP, pivots, MA signals, floorsheet, volume, all-indices)
 
-## Key Fixes Applied
+## Important Build Note
+- `npx tsc --noEmit` passes but **`npm run build`** (which runs `tsc -b`) is stricter — catches `erasableSyntaxOnly` violations, template literal type mismatches, and null-safety issues that `--noEmit` misses
+- Always run `npm run build` before committing to ensure production-ready code
 
-### Session 4 (2026-07-04) — Sharesansar Integration & System Hardening
-1. **Sharesansar fetcher** (`backend/data/sharesansar_fetcher.py`): Added VWAP, pivot analysis (S3-R3), moving average signals (MA5/MA20/MA180), floorsheet data, 17 indices, real volume. Circuit breaker (threshold=3, cooloff=60s). TTL cache: today-share-price 120s, indices 300s.
-2. **Backend `/api/stocks/{symbol}/detail`** extended with VWAP, prev_close, volume, 180d_avg, confidence_score, pivot levels, MA signals from Sharesansar.
-3. **Backend `/api/stocks/{symbol}/floorsheet`** new endpoint — transaction-level floorsheet from Sharesansar.
-4. **Backend `/api/market/live`** now merges Sharesansar volume/prev_close into Merolagani prices; appends Sharesansar indices beyond SignalR coverage.
-5. **NepalStock removed entirely** — 5 spots: import, global instance, ensure_css(), close(), health check removed. Was causing 401/DNS errors.
-6. **2-index filter removed** — `/api/market/live` and `/api/market/overview` return all 17 indices, not just NEPSE + Sensitive.
-7. **Duplicate candle fix** — live candle appended only when `market_status.is_open` (both main chart line 631 and compare endpoint line 890).
-8. **N+1 query fixes** — compare_stocks and build_data_context now use single batched `SELECT ... WHERE symbol IN (...)` queries.
-9. **Race condition fixes** — `asyncio.Lock` on LIVE_CACHE, `threading.Lock` on SECURITY_CACHE, `asyncio.Lock` on sharesansar global caches.
-10. **LIMIT added** — signals (200), portfolio (500), stock_history (1000), floorsheet (200).
-11. **Retry with exponential backoff** — merolagani_fetcher and sharesansar_fetcher: _fetch_with_retry (1s, 2s, 4s delays, max 3 retries, 5xx/connection only).
-12. **DB schema** — DailyPrice: composite index `(symbol, date)` + `UniqueConstraint`.
-13. **engine.dispose()** on shutdown.
-14. **try/except** on signal generation and Sharesansar detail fetch to prevent 500s.
-15. **Frontend AbortControllers** — 8 fetch locations (FloorsheetPanel, CompanyInfo, Trade, Guide, useMarketStatus, Portfolio, Brokers) with 5-10s timeouts.
-16. **Skeleton components** — SkeletonTable, SkeletonCompanyInfo, SkeletonChart, SkeletonIndicesCarousel.
-17. **Remove NepalStock noise** — all console errors and failed fetches eliminated.
-18. **Disclaimers added** — Highly visible yellow warning banners on Signals page, AISuggestion, Trade confidence badge, Backtest results, ComparePanel footnote.
-19. **Color fix** — Indices table uses `percent_change` (not `change`) for green/red direction.
-20. **start-demo.bat** — uses `127.0.0.1` (not `localhost` — Windows IPv6 issue); port cleanup kills stale processes before starting.
+## Recent Changes (Session 2026-07-05)
 
-### Session 3 (2026-07-02)
-1. **ComparePanel**: Removed unused `useRef`/`useCallback` imports; memoized `metrics` array; simplified effect cleanup; AbortController race fix.
-2. Search enrichment with live prices (ltp, percent_change)
-3. Blank screen fixes (ErrorBoundary, StockChart try/catch, empty fallbacks)
-4. Guide two-tier system (curated + LLM with guardrails)
-5. Port 8000 → 8001 (Windows TCP TIME_WAIT)
+### Chatbot Friendliness
+- Added `TONE & CONVERSATION` section to `GUIDE_SYSTEM_PROMPT` — handles greetings, thank you, please, elaboration requests with warm follow-up
+- Rich data context: build_data_context now includes prev_close, day range, turnover, trades, market_cap, and market snapshot (all 4 indices)
 
-### Session 3 (2026-07-02)
-1. **ComparePanel**: Removed unused `useRef`/`useCallback` imports; memoized `metrics` array; simplified effect cleanup (no double clearTimeout); fixed race condition with AbortController
-2. **QuestionInput**: Removed unused `AskResponse` type and `WarningIcon` import
-3. **SearchBar**: Selected symbol stays in input, dropdown closes on Enter/click (from previous session)
-4. **Backend `get_signals`**: Renamed param `type` → `signal_type` (shadowed Python built-in)
-5. **Backend unused imports**: Removed `traceback`, `is_market_open`, `fetch_live_prices`, `fetch_market_summary`, `get_sector_for_symbol` from `main.py`; `Security`/`compute_indicators`/`compute_signal` from `updater.py`; `timedelta` from `fetcher.py`; `date` from `seeder.py`; `datetime`/`date_parse` from `fuzzy.py`; `cdx` from `nepalstock_fetcher.py`
-6. **Indicators.py**: Re-added `import pandas as pd` (needed for type hint `pd.DataFrame`)
-7. **Trade.tsx**: Extracted `86400000` → `MS_PER_DAY` constant
-8. **BrokerTable.tsx**: Removed unused `CompanyIcon` import
-9. **WinnerLoserCard.tsx**: Moved `colorMap`/`headerIconMap` to module level (avoid recreation per render)
-10. **SignalTable.tsx**: Changed key from `symbol-index` to just `symbol`
-11. **Brokers.tsx**: Typed `any` → `BrokerDetail` for broker mapping; typed `(b as Record<string, number>)` for dynamic key access
-12. **HermesSidebar.tsx**: Added `CompanyEntry` interface; removed `any` types
-13. **IPOSection.tsx**: Added AbortController, user-visible `fetchError` state, `WarningIcon`
-14. **Compare data staleness fixed**: Backend restart picks up `records[::-1]` (was `records[-60:][::-1]` dropping newest 60 records); compare endpoint now returns 120 prices up to July 1 (was stuck at April 2)
+### Portfolio Improvements
+- `SymbolSearchInput` component — autocomplete with debounced search (same pattern as SearchBar)
+- Date picker (`input type="date"`) added to AddHoldingModal with default today
+- Fixed `fetchPortfolio` return type — was `Promise<PortfolioHolding[]>` but backend returns `{holdings, total_invested, ...}` causing runtime crash
+- Backend portfolio endpoint computes totals; frontend destructures response directly
 
-## Running Services (as of 2026-07-02)
-- Backend (port 8001): uvicorn main:app (venv)
-- Frontend (port 5173): Vite dev server
-- Ollama (port 11434): hermes3 model
+### Search Fixes
+- Fixed `fetchSearch` return type — was `Promise<SearchSuggestion[]>` (bare array) but backend returns `{suggestions: [...], symbol, start, end}` — broke all autocomplete and NLP symbol detection
+- `SearchBar` and `SymbolSearchInput` now receive correct response shape
+
+### Floorsheet Fix
+- Fixed `fetchFloorsheet` return type — unwraps `res.floorsheet` so component gets the array, not the wrapper object
+- Timeout/abort now shows user-visible message instead of silent swallow
+
+### Codebase Audit Fixes (HIGH priority)
+1. **NameError on startup** — `set_security_cache` moved inside try block with empty fallback
+2. **SQLite Windows path** — `DB_PATH.as_posix()` fixes backslash in connection URL
+3. **Event loop blocking** — `threading.Lock` → `asyncio.Lock` everywhere in cache.py; disk I/O offloaded via `asyncio.to_thread`; 6 caller sites updated with `await`
+4. **N+1 sessions in signals.py** — `generate_signals()` uses one session instead of 3 per security (400+ → 1 connection)
+5. **0.00% data loss** — `is not None` checks replace `or` falsy chain in `_enrich_item`
+6. **KeyError crash** — `'symbol' in p` guard before dict comprehension
+7. **Missing error context** — exception logged with `%s` in index poll handler
+
+### Codebase Audit Fixes (MEDIUM priority)
+8. **useStockData.ts** — migrated all 4 hooks from raw `fetch('/api/...')` to `endpoints.ts` functions (gains timeout, error classification, centralized URLs)
+9. **cache.py** — `load_live_cache` simplified (disk reads removed, returns `{}`)
+
+### TypeScript Build Fixes
+- Fixed `tsc -b` build errors across 12 files:
+  1. `client.ts` — `erasableSyntaxOnly`: changed public parameter properties to class properties
+  2. `Skeleton.tsx` — added explicit `string | number` union type for `width` prop
+  3. `StockChart.tsx` — `any[]` → safe cast for candle data
+  4. `endpoints.ts` — `fetchCompare` accepts optional `opts` for abort signal
+  5. `Brokers.tsx` — removed incorrect `BrokerDetail` type annotation on `.map()` callback
+  6. `Guide.tsx` — aligned response destructuring with actual API shape (`entries` → `entry`)
+  7. `Home.tsx` — optional chaining for `percent_change`, `sectors`, `_fetched_at`
+  8. `IPOSection.tsx` — cast API response to expected types; removed orphaned abort arg
+  9. `LiveMarket.tsx` — relaxed interfaces to match nullable API fields; extracted `formatTurnover`
+  10. `Trade.tsx` — switched `data?.prices?.length` to `data?.prices && data.prices.length` for proper narrowing
+- Build now passes with `npm run build` (0 errors)
+
+### Response Formatting
+- All LLM responses must follow STRICT FORMAT RULES: compact lines, bold section headers, max 12 lines, disclaimer on own line
+- Stock data uses single-line format: `**NABIL** | NPR 485.20 | +2.15% | Vol: 52,341`
+- Technical indicators: one bullet per indicator with brief interpretation
 
 ## Test Commands
 ```powershell
 # Health
-Invoke-WebRequest http://127.0.0.1:5173/api/health
+Invoke-WebRequest http://127.0.0.1:8001/api/health
 
-# Search with live prices
-Invoke-WebRequest "http://127.0.0.1:5173/api/search?query=NABIL"
+# Search
+Invoke-WebRequest "http://127.0.0.1:8001/api/search?query=NABIL"
 
-# All 376 companies
-Invoke-WebRequest http://127.0.0.1:5173/api/companies
+# Stock detail
+Invoke-WebRequest "http://127.0.0.1:8001/api/stocks/NABIL/detail"
 
-# Stock history (current data)
-Invoke-WebRequest "http://127.0.0.1:5173/api/stocks/NABIL/history?start=2026-06-01&end=2026-07-02"
+# Floorsheet
+Invoke-WebRequest "http://127.0.0.1:8001/api/stocks/NABIL/floorsheet"
 
-# Stock detail with Sharesansar data (VWAP, pivots, MA signals)
-Invoke-WebRequest "http://127.0.0.1:5173/api/stocks/NABIL/detail"
+# Compare
+Invoke-WebRequest "http://127.0.0.1:8001/api/stocks/compare?symbols=NABIL,SCB"
 
-# Floorsheet (transaction-level trade history)
-Invoke-WebRequest "http://127.0.0.1:5173/api/stocks/NABIL/floorsheet"
+# Market overview
+Invoke-WebRequest http://127.0.0.1:8001/api/market/overview
 
-# Compare (120 prices per stock)
-Invoke-WebRequest "http://127.0.0.1:5173/api/stocks/compare?symbols=NABIL,SCB"
-
-# Market overview (all 17 indices, gainers, losers, active)
-Invoke-WebRequest http://127.0.0.1:5173/api/market/overview
-
-# All signals
-Invoke-WebRequest http://127.0.0.1:5173/api/signals
-
-# Guide search (curated + LLM fallback)
-Invoke-WebRequest "http://127.0.0.1:5173/api/guide/search?q=how+to+start+trading"
+# Portfolio
+Invoke-WebRequest http://127.0.0.1:8001/api/portfolio
 
 # AI chat
-Invoke-WebRequest -Method POST http://127.0.0.1:5173/api/ask -Body '{"question":"What is RSI?"}' -ContentType "application/json"
+Invoke-WebRequest -Method POST http://127.0.0.1:8001/api/ask -Body '{"question":"hello"}' -ContentType "application/json"
+
+# Signals
+Invoke-WebRequest http://127.0.0.1:8001/api/signals
+
+# Guide search
+Invoke-WebRequest "http://127.0.0.1:8001/api/guide/search?q=how+to+start+trading"
 ```
 
-## Data Stats (as of 2026-07-04)
-- DB: `data/nepse.db` (NOT `backend/data/nepse.db` — the latter is empty)
-- Securities: 376 (in DB + live yonepse)
-- DailyPrices: ~83k rows across 376 stocks (up to 2026-07-01)
+## Running Services (as of 2026-07-05)
+- Backend (port 8001): uvicorn main:app
+- Frontend (port 5173): Vite dev server
+- Ollama (port 11434): `qwen2.5:7b-instruct-q4_k_m` (4.68 GB, Q4_K_M quant)
+
+## Data Stats (as of 2026-07-05)
+- DB: `backend/data/nepse.db` (or `data/nepse.db` depending on config — see `config.py:DATA_DIR`)
+- Securities: 376
+- DailyPrices: ~83k rows
 - Signals: ~350 (generated via technical analysis)
-- Compare endpoint: 120 prices per stock, batched query
-- Sharesansar: 17 indices, ~200 stocks with VWAP/pivot/MA data
-- Backend on port 8001: fresh restart (cleared pycache)
+- Portfolio: user-specific (SQLite)
+- LLM model: qwen2.5:7b-instruct-q4_k_m
 
 ## Important Known Issues
-- Port 8000 stuck in Windows TCP TIME_WAIT — don't use, use 8001
-- `fetch_all_securities()` (nepse_data.json) includes 376 companies; some are bonds/debentures
+- Port 8000 stuck in Windows TCP TIME_WAIT — use 8001
+- `fetch_all_securities()` includes 376 companies; some are bonds/debentures
 - Backend `--reload` flaky on Windows — kill and restart fully if changes not picked up
-- Two DB files exist: `data/nepse.db` (real data) and `backend/data/nepse.db` (empty). `config.py` points to `data/nepse.db`
+- `.env` file exists but `load_dotenv()` is never called — custom `OLLAMA_URL` is silently ignored
+- SQLite URL uses `Path.__str__()` which on Windows produces backslashes — fixed via `asyncio.to_thread`
 
 ## Quick Restart
 ```powershell
@@ -119,8 +127,8 @@ Get-Process -Name python* | Where-Object { $_.CommandLine -match "uvicorn" } | S
 Get-Process -Id (Get-NetTCPConnection -LocalPort 5173).OwningProcess | Stop-Process -Force
 
 # Start backend
-Start-Process -WindowStyle Hidden -FilePath "venv/Scripts/python.exe" -ArgumentList "-m uvicorn main:app --host 0.0.0.0 --port 8001" -WorkingDirectory "backend"
+Start-Process -WindowStyle Hidden -FilePath "python" -ArgumentList "-m uvicorn main:app --host 127.0.0.1 --port 8001" -WorkingDirectory "backend"
 
 # Start frontend
-Start-Process -WindowStyle Hidden -FilePath "frontend/node_modules/.bin/vite.cmd" -ArgumentList "--host" -WorkingDirectory "frontend"
+Set-Location frontend; npm run dev
 ```

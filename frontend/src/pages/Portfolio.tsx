@@ -4,28 +4,16 @@ import { PageTransition } from '../components/Navbar'
 import FloatingChat from '../components/FloatingChat'
 import ErrorBanner from '../components/ErrorBanner'
 import RefreshIndicator from '../components/RefreshIndicator'
+import SymbolSearchInput from '../components/SymbolSearchInput'
 import { formatNPR, formatPercent, formatChange } from '../utils/format'
+import { fetchPortfolio, addHolding, deleteHolding } from '../api/endpoints'
+import type { PortfolioHolding } from '../api/endpoints'
 import {
   TrendingUpIcon, TrendingDownIcon, CloseIcon,
 } from '../components/Icons'
 
-interface Holding {
-  id: number
-  symbol: string
-  name: string
-  quantity: number
-  avg_cost: number
-  buy_date: string | null
-  notes: string
-  ltp: number | null
-  invested: number
-  current_value: number | null
-  pl: number | null
-  pl_percent: number | null
-}
-
 interface PortfolioData {
-  holdings: Holding[]
+  holdings: (PortfolioHolding & { name?: string })[]
   total_invested: number
   total_value: number
   total_pl: number
@@ -36,7 +24,7 @@ function AddHoldingModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
   const [symbol, setSymbol] = useState('')
   const [quantity, setQuantity] = useState('')
   const [avgCost, setAvgCost] = useState('')
-  const [buyDate, setBuyDate] = useState('')
+  const [buyDate, setBuyDate] = useState(new Date().toISOString().split('T')[0])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -54,10 +42,7 @@ function AddHoldingModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
     }
     setSubmitting(true)
     try {
-      const params = new URLSearchParams({ symbol: symbol.trim().toUpperCase(), quantity: String(qty), avg_cost: String(cost) })
-      if (buyDate) params.set('buy_date', buyDate)
-      const res = await fetch(`/api/portfolio/holdings?${params}`, { method: 'POST' })
-      if (!res.ok) throw new Error(await res.text())
+      await addHolding(symbol.trim().toUpperCase(), qty, cost, buyDate)
       onAdded()
       onClose()
     } catch (e: any) {
@@ -80,12 +65,7 @@ function AddHoldingModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
           <button onClick={onClose} className="text-text-muted hover:text-text"><CloseIcon size={16} /></button>
         </div>
         <div className="space-y-3">
-          <input
-            placeholder="Symbol (e.g. NABIL)"
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
-            className="w-full bg-surface-hover text-text text-sm rounded-lg px-3 py-2 border border-border outline-none"
-          />
+          <SymbolSearchInput onSelect={setSymbol} value={symbol} placeholder="Symbol (e.g. NABIL)" />
           <input
             type="number"
             placeholder="Quantity"
@@ -129,19 +109,19 @@ export default function Portfolio() {
   const [error, setError] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  const fetchPortfolio = useCallback(async (signal?: AbortSignal) => {
+  const loadPortfolio = useCallback(async () => {
     try {
-      const res = await fetch('/api/portfolio', { signal })
-      if (res.ok) {
-        const d = await res.json()
-        setData(d)
-        setFetchedAt(new Date().toISOString())
-        setError(null)
-      } else {
-        setError('Failed to load portfolio data')
-      }
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') return
+      const resp = await fetchPortfolio()
+      setData({
+        holdings: resp.holdings,
+        total_invested: resp.total_invested,
+        total_value: resp.total_value,
+        total_pl: resp.total_pl,
+        total_pl_percent: resp.total_pl_percent,
+      })
+      setFetchedAt(new Date().toISOString())
+      setError(null)
+    } catch {
       setError('Failed to load portfolio data')
     } finally {
       setLoading(false)
@@ -149,23 +129,16 @@ export default function Portfolio() {
   }, [])
 
   useEffect(() => {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 10000)
-    fetchPortfolio(controller.signal).finally(() => clearTimeout(timeout))
-    const id = setInterval(() => {
-      const c = new AbortController()
-      const t = setTimeout(() => c.abort(), 10000)
-      fetchPortfolio(c.signal).finally(() => clearTimeout(t))
-    }, 30000)
-    return () => { clearInterval(id); controller.abort(); clearTimeout(timeout) }
-  }, [fetchPortfolio])
+    loadPortfolio()
+    const id = setInterval(loadPortfolio, 30000)
+    return () => clearInterval(id)
+  }, [loadPortfolio])
 
   const handleDelete = async (id: number) => {
     try {
-      const res = await fetch(`/api/portfolio/holdings/${id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete holding')
+      await deleteHolding(id)
       setDeleteError(null)
-      fetchPortfolio()
+      loadPortfolio()
     } catch {
       setDeleteError('Failed to delete holding')
     }
@@ -204,7 +177,7 @@ export default function Portfolio() {
         </div>
 
         {error && (
-          <ErrorBanner message={error} onRetry={() => { setLoading(true); fetchPortfolio() }} onDismiss={() => setError(null)} />
+          <ErrorBanner message={error} onRetry={() => { setLoading(true); loadPortfolio() }} onDismiss={() => setError(null)} />
         )}
         {deleteError && (
           <ErrorBanner message={deleteError} onDismiss={() => setDeleteError(null)} />
@@ -261,7 +234,7 @@ export default function Portfolio() {
                   </tr>
                 )}
                 {(data?.holdings ?? []).map((h, i) => {
-                  const plPos = (h.pl ?? 0) >= 0
+                  const plPos = (h.pnl ?? 0) >= 0
                   return (
                     <motion.tr
                       key={h.id}
@@ -281,12 +254,12 @@ export default function Portfolio() {
                       <td className="px-4 py-3 text-right font-mono-nums text-text">{formatNPR(h.current_value)}</td>
                       <td className={`px-4 py-3 text-right font-mono-nums font-medium ${plPos ? 'text-green' : 'text-red'}`}>
                         <span className="flex items-center justify-end gap-1">
-                          {h.pl != null && (plPos ? <TrendingUpIcon size={12} /> : <TrendingDownIcon size={12} />)}
-                          {formatChange(h.pl)}
+                          {h.pnl != null && (plPos ? <TrendingUpIcon size={12} /> : <TrendingDownIcon size={12} />)}
+                          {formatChange(h.pnl)}
                         </span>
                       </td>
                       <td className={`px-4 py-3 text-right font-mono-nums font-medium ${plPos ? 'text-green' : 'text-red'}`}>
-                        {formatPercent(h.pl_percent)}
+                        {formatPercent(h.pnl != null && h.invested > 0 ? (h.pnl / h.invested) * 100 : null)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button
@@ -312,7 +285,7 @@ export default function Portfolio() {
       {showAdd && (
         <AddHoldingModal
           onClose={() => setShowAdd(false)}
-          onAdded={fetchPortfolio}
+          onAdded={loadPortfolio}
         />
       )}
       <FloatingChat />

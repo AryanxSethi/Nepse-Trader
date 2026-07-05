@@ -36,7 +36,7 @@ export default function SignalTable({ signals, onSelectSymbol, loading }: Props)
           <tbody>
             {signals.map((s, i) => (
               <motion.tr
-                key={s.symbol}
+                key={`${s.symbol}-${i}`}
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.015 }}

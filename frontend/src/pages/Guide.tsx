@@ -4,6 +4,7 @@ import QuestionInput from '../components/QuestionInput'
 import GuideAnswer from '../components/GuideAnswer'
 import { PageTransition } from '../components/Navbar'
 import { BookIcon, BrainIcon, CompanyIcon } from '../components/Icons'
+import { fetchGuideSearch } from '../api/endpoints'
 
 const popularTopics = [
   { label: 'Start Trading', query: 'how to start trading' },
@@ -35,10 +36,12 @@ export default function Guide() {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 10000)
     try {
-      const res = await fetch('/api/guide/search?q=' + encodeURIComponent(query), { signal: controller.signal })
-      const data = await res.json()
-      if (data?.entry || data?.llm_answer) {
-        setCuratedAnswer(data)
+      const data = await fetchGuideSearch(query)
+      if (data?.entries?.length || data?.llm_answer) {
+        setCuratedAnswer({
+          entry: data.entries?.[0] || null,
+          llm_answer: data.llm_answer,
+        })
         setShowCurated(true)
         return null
       }

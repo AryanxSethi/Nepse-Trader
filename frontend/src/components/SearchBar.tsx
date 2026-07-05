@@ -1,15 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { SearchIcon, CloseIcon } from './Icons'
-
-interface SearchSuggestion {
-  symbol: string
-  name: string
-  match_type: string
-  score: number
-  ltp?: number
-  percent_change?: number
-}
+import { fetchSearch } from '../api/endpoints'
+import type { SearchSuggestion } from '../types'
 
 interface Props {
   onSearch: (symbol: string, start?: string, end?: string) => void
@@ -51,9 +44,7 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
     setLoading(true)
     setError(false)
     try {
-      const res = await fetch(`/api/search?query=${encodeURIComponent(q)}`, { signal: controller.signal })
-      if (!res.ok) throw new Error()
-      const data = await res.json()
+      const data = await fetchSearch(q)
       if (data.symbol && !data.suggestions?.length) {
         onSearch(data.symbol, data.start, data.end)
         setQuery(data.symbol)
@@ -160,7 +151,7 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
           >
             {suggestions.map((s, i) => (
               <motion.button
-                key={s.symbol}
+                key={`${s.symbol}-${i}`}
                 initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.02 }}

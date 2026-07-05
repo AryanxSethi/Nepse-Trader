@@ -64,6 +64,7 @@ export interface BacktestData {
   max_drawdown: number
   win_rate: number
   total_trades: number
+  total_costs: number
   equity_curve: { date: string; value: number }[]
 }
 
@@ -126,6 +127,8 @@ export interface SearchSuggestion {
   name: string
   match_type: string
   score: number
+  ltp?: number
+  percent_change?: number
 }
 
 export interface GainerLoserItem {

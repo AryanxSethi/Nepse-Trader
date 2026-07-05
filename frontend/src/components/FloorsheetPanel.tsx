@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { TableIcon, WarningIcon } from './Icons'
+import { fetchFloorsheet } from '../api/endpoints'
 
 interface FloorsheetRow {
   contract_no: string
@@ -28,11 +29,13 @@ export default function FloorsheetPanel({ symbol }: Props) {
     setRows([])
     setLoading(true)
     setFetchError('')
-    fetch(`/api/stocks/${encodeURIComponent(symbol)}/floorsheet`, { signal: controller.signal })
-      .then(r => { if (!r.ok) throw new Error(`API error ${r.status}`); return r.json() })
-      .then(data => setRows(data.floorsheet || []))
+    fetchFloorsheet(symbol, { signal: controller.signal })
+      .then(data => setRows(data))
       .catch((e) => {
-        if (e.name === 'AbortError') return
+        if (e.name === 'AbortError' || e.name === 'TimeoutError') {
+          setFetchError('Request timed out — floorsheet unavailable')
+          return
+        }
         setFetchError(e.message || 'Failed to load floorsheet')
       })
       .finally(() => { clearTimeout(timeout); setLoading(false) })

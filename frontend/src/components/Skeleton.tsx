@@ -1,4 +1,4 @@
-export function SkeletonBlock({ width = '100%', height = 20, className = '' }) {
+export function SkeletonBlock({ width = '100%', height = 20, className = '' }: { width?: string | number; height?: number; className?: string }) {
   return (
     <div
       className={`animate-shimmer rounded-md ${className}`}

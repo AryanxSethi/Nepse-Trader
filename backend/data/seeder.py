@@ -4,9 +4,8 @@ from datetime import datetime
 from sqlalchemy import select
 from database import async_session, init_db
 from models import Security, DailyPrice
+from config import NEPSEMAN_BASE
 from data.fetcher import fetch_all_securities
-
-NEPSEMAN_BASE = "https://nepseman-api-production.up.railway.app"
 
 
 async def seed_securities():

@@ -5,6 +5,7 @@ import { SkeletonBlock } from '../components/Skeleton'
 import { useBacktest } from '../hooks/useStockData'
 import { PageTransition } from '../components/Navbar'
 import { BacktestIcon, WarningIcon, SearchIcon } from '../components/Icons'
+import { fetchSecurities } from '../api/endpoints'
 
 interface StockOption {
   symbol: string
@@ -24,8 +25,7 @@ export default function Backtest() {
   const [computedAt, setComputedAt] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/securities')
-      .then((r) => r.json())
+    fetchSecurities()
       .then((data) => setStocks(data || []))
       .catch((e) => console.error('Failed to load securities', e))
   }, [])
@@ -88,9 +88,9 @@ export default function Backtest() {
               </div>
               {showDropdown && filteredStocks.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full bg-surface-card border border-border rounded-lg overflow-hidden shadow-xl max-h-48 overflow-y-auto">
-                  {filteredStocks.map((s) => (
+                  {filteredStocks.map((s, i) => (
                     <button
-                      key={s.symbol}
+                      key={`${s.symbol}-${i}`}
                       onClick={() => selectStock(s.symbol)}
                       className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-surface-hover transition-colors"
                     >

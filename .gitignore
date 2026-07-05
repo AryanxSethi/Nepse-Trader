@@ -9,3 +9,5 @@ ipos.json
 .DS_Store
 Thumbs.db
 data/cache/
+*.log
+console-export-*/

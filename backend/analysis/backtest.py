@@ -5,6 +5,11 @@ from sqlalchemy import select
 from database import async_session
 from models import DailyPrice
 
+# NEPSE trading costs (percentage)
+BROKER_COMMISSION_RATE = 0.004  # 0.4%
+SEBON_FEE_RATE = 0.00015       # 0.015%
+STT_RATE = 0.001               # 0.1% (on sell only)
+
 
 async def run_backtest(symbol: str, fast_ma: int = 20, slow_ma: int = 50, days: int = 365):
     cutoff = datetime.now(timezone.utc).date() - timedelta(days=days)
@@ -26,7 +31,6 @@ async def run_backtest(symbol: str, fast_ma: int = 20, slow_ma: int = 50, days: 
     df["signal"] = 0
     df.loc[df["sma_fast"] > df["sma_slow"], "signal"] = 1
     df["position"] = df["signal"].diff()
-    # Enter position on first signal day
     if df["signal"].iloc[0] == 1:
         df["position"].iloc[0] = 1
 
@@ -37,14 +41,26 @@ async def run_backtest(symbol: str, fast_ma: int = 20, slow_ma: int = 50, days: 
     peak = balance
     drawdowns = []
     portfolio_values = []
+    total_costs = 0
 
     for i, row in df.iterrows():
         if row["position"] == 1 and balance > 0:
-            shares = int(balance // row["close"])
-            balance -= shares * row["close"]
+            cost = row["close"]
+            commission = cost * BROKER_COMMISSION_RATE
+            sebon = cost * SEBON_FEE_RATE
+            total_fees = commission + sebon
+            total_costs += total_fees * (balance // row["close"])
+            shares = int(balance // (cost + total_fees))
+            balance -= shares * (cost + total_fees)
             trades += 1
         elif row["position"] == -1 and shares > 0:
-            balance = shares * row["close"]
+            proceeds = shares * row["close"]
+            commission = proceeds * BROKER_COMMISSION_RATE
+            sebon = proceeds * SEBON_FEE_RATE
+            stt = proceeds * STT_RATE
+            total_fees = commission + sebon + stt
+            total_costs += total_fees
+            balance = proceeds - total_fees
             shares = 0
             if balance > 100000:
                 wins += 1
@@ -73,6 +89,7 @@ async def run_backtest(symbol: str, fast_ma: int = 20, slow_ma: int = 50, days: 
         "max_drawdown": round(max_dd, 2),
         "win_rate": round(win_rate, 1),
         "total_trades": trades,
+        "total_costs": round(total_costs, 2),
         "equity_curve": [
             {"date": r["date"], "value": round(portfolio_values[i], 2)}
             for i, r in enumerate(records)

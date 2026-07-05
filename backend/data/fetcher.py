@@ -1,5 +1,6 @@
 import logging
 
+from config import YONEPSE_BASE
 from data._http import (
     CircuitBreaker,
     FetchResult,
@@ -9,7 +10,6 @@ from data._http import (
 
 logger = logging.getLogger('fetcher')
 
-YONEPSE_BASE = "https://shubhamnpk.github.io/yonepse"
 circuit_breaker = CircuitBreaker(threshold=3, cooloff=60.0)
 
 

@@ -83,7 +83,7 @@ export default function StockChart({ data, indicators, overlays, height = 420 }:
       }
 
       const candleData = validData.map((d, i, arr) => {
-        const item: Record<string, any> = {
+        const item: Record<string, unknown> = {
           time: d.date,
           open: d.open ?? d.close,
           high: d.high ?? d.close,
@@ -110,7 +110,7 @@ export default function StockChart({ data, indicators, overlays, height = 420 }:
           borderDownColor: '#ef4444',
           wickUpColor: '#22c55e',
           wickDownColor: '#ef4444',
-        }).setData(candleData)
+        }).setData(candleData as any)
       } else {
         chart.addSeries(LineSeries, {
           color: '#3b82f6',

@@ -7,26 +7,21 @@ from urllib.parse import quote
 import httpx
 from bs4 import BeautifulSoup
 
+from config import MEROLAGANI_BASE, MEROLAGANI_TIMEOUT, DEFAULT_USER_AGENT
 from data._http import CircuitBreaker
 
 logger = logging.getLogger('merolagani_fetcher')
 
-MEROLAGANI_BASE = 'https://merolagani.com'
-TIMEOUT_SEC = 15
-USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-
-circuit_breaker = CircuitBreaker(threshold=3, cooloff=60.0)
-
-
 class MerolaganiFetcher:
     def __init__(self):
         self._client: httpx.AsyncClient | None = None
+        self._circuit_breaker = CircuitBreaker(threshold=3, cooloff=60.0)
 
     async def _init_client(self):
         if self._client is None:
             self._client = httpx.AsyncClient(
-                headers={'User-Agent': USER_AGENT},
-                timeout=TIMEOUT_SEC,
+                headers={'User-Agent': DEFAULT_USER_AGENT},
+                timeout=MEROLAGANI_TIMEOUT,
                 follow_redirects=True,
             )
 
@@ -48,7 +43,7 @@ class MerolaganiFetcher:
             except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.TimeoutException) as e:
                 last_exc = e
                 if attempt < max_retries - 1:
-                    logger.warning(
+                    (logger.debug if str(e) == '' else logger.warning)(
                         'GET %s failed (%s), retrying (%d/%d)',
                         url, e, attempt + 1, max_retries,
                     )
@@ -57,16 +52,16 @@ class MerolaganiFetcher:
 
     async def _get(self, path: str) -> str | None:
         await self._init_client()
-        if circuit_breaker.is_open('merolagani'):
-            logger.warning('[merolagani] circuit open, skipping %s', path)
+        if self._circuit_breaker.is_open('merolagani'):
+            logger.debug('[merolagani] circuit open, skipping %s', path)
             return None
         try:
             resp = await self._fetch_with_retry(self._client, f'{MEROLAGANI_BASE}{path}')
             resp.raise_for_status()
-            circuit_breaker.record_success('merolagani')
+            self._circuit_breaker.record_success('merolagani')
             return resp.text
         except Exception as e:
-            circuit_breaker.record_failure('merolagani')
+            self._circuit_breaker.record_failure('merolagani')
             logger.debug('Merolagani GET %s failed: %s', path, e)
             return None
 
@@ -143,16 +138,19 @@ class MerolaganiFetcher:
 
         return result
 
+    async def get_index_history_page(self) -> str | None:
+        return await self._get('/Indices.aspx')
+
     async def get_live_index(self) -> dict | None:
-        if circuit_breaker.is_open('merolagani'):
+        if self._circuit_breaker.is_open('merolagani'):
             return None
         try:
             conn_data = json.dumps([{'name': 'stocktickerhub'}])
 
             def _signalr() -> dict | None:
                 with httpx.Client(
-                    headers={'User-Agent': USER_AGENT},
-                    timeout=20, verify=False,
+                    headers={'User-Agent': DEFAULT_USER_AGENT},
+                    timeout=MEROLAGANI_TIMEOUT, verify=False,
                 ) as c:
                     c.get(f'{MEROLAGANI_BASE}/LatestMarket.aspx')
                     neg = c.post(
@@ -208,14 +206,14 @@ class MerolaganiFetcher:
                                     'perChange': pc,
                                 }
                         if out:
-                            circuit_breaker.record_success('merolagani')
+                            self._circuit_breaker.record_success('merolagani')
                             return out
 
-            circuit_breaker.record_success('merolagani')
+            self._circuit_breaker.record_success('merolagani')
             return None
         except Exception as e:
             logger.debug('Merolagani SignalR index poll failed: %s', e)
-            circuit_breaker.record_failure('merolagani')
+            self._circuit_breaker.record_failure('merolagani')
             return None
 
     def _parse_gainers_losers(self, rows):
@@ -311,6 +309,9 @@ class MerolaganiFetcher:
             elif '1 year yield' in label:
                 result['1y_yield'] = value
         return result
+
+    def circuit_breaker_status(self, source: str) -> str:
+        return self._circuit_breaker.status(source)
 
     async def stop(self):
         if self._client:

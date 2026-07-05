@@ -7,7 +7,7 @@ import AISuggestion from '../components/AISuggestion'
 import CompanyInfo from '../components/CompanyInfo'
 import ComparePanel from '../components/ComparePanel'
 import FloorsheetPanel from '../components/FloorsheetPanel'
-import HermesSidebar from '../components/HermesSidebar'
+import AISidebar from '../components/AISidebar'
 import FloatingChat from '../components/FloatingChat'
 import RefreshIndicator from '../components/RefreshIndicator'
 import { SkeletonChart, SkeletonCard } from '../components/Skeleton'
@@ -15,6 +15,7 @@ import { formatNPR } from '../utils/format'
 import { useStockHistory } from '../hooks/useStockData'
 const MS_PER_DAY = 86400000
 import { PageTransition } from '../components/Navbar'
+import { fetchStockDetail } from '../api/endpoints'
 import { CompanyIcon, WarningIcon, ChartIcon, CompareIcon, TableIcon } from '../components/Icons'
 
 function toDateStr(d: Date): string {
@@ -38,13 +39,10 @@ export default function Trade() {
   useEffect(() => {
     if (!symbol) { setDetailData(null); return }
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 10000)
-    fetch(`/api/stocks/${encodeURIComponent(symbol)}/detail`, { signal: controller.signal })
-      .then(r => r.json())
-      .then(data => { if (!controller.signal.aborted) setDetailData(data) })
+    fetchStockDetail(symbol, { signal: controller.signal })
+      .then(data => { if (!controller.signal.aborted) setDetailData(data as any) })
       .catch(() => { if (!controller.signal.aborted) setDetailData(null) })
-      .finally(() => clearTimeout(timeout))
-    return () => { controller.abort(); clearTimeout(timeout) }
+    return () => controller.abort()
   }, [symbol])
 
   const startStr = useMemo(
@@ -152,7 +150,7 @@ export default function Trade() {
                   <div className="flex items-center gap-3">
                     <CompanyIcon size={18} className="text-accent" />
                     <h2 className="text-lg font-bold text-text">{symbol}</h2>
-                    {data?.prices?.length > 0 && (
+                    {data?.prices && data.prices.length > 0 && (
                       <span className="text-sm text-text-muted">
                         LTP: <span className="font-semibold text-text">
                           {formatNPR(data.prices[data.prices.length - 1]?.close)}
@@ -245,7 +243,7 @@ export default function Trade() {
             )}
           </div>
 
-          <HermesSidebar onSelectSymbol={handleSearch} currentSymbol={symbol} />
+          <AISidebar onSelectSymbol={handleSearch} currentSymbol={symbol} />
         </div>
       </div>
       <FloatingChat symbol={symbol} onParsedResult={handleParsedResult} />

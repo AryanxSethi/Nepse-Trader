@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { useHermesAsk } from '../hooks/useHermesQuery'
+import { useLLMAsk } from '../hooks/useLLMQuery'
 import { ChatIcon, BrainIcon, CloseIcon } from './Icons'
 
 interface Message {
@@ -60,7 +60,7 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
   const [loadingPhase, setLoadingPhase] = useState(0)
   const [expandedMessages, setExpandedMessages] = useState<Set<number>>(new Set())
   const [customLoading, setCustomLoading] = useState(false)
-  const { mutate, isPending, data, error, reset } = useHermesAsk()
+  const { mutate, isPending, data, error, reset } = useLLMAsk()
   const listRef = useRef<HTMLDivElement>(null)
   const initialized = useRef(false)
   const loadingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -112,7 +112,7 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
     if (error) {
       setMessages((prev) => [...prev, {
         role: 'assistant',
-        content: 'Unable to reach the AI assistant. Ensure Ollama is running with the Hermes model.',
+        content: 'Unable to reach the AI assistant. Ensure Ollama is running with the LLM model.',
       }])
       reset()
       setLoadingPhase(0)

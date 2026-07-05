@@ -1,11 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { fetchMarketStatus } from '../api/endpoints'
+import type { MarketStatus } from '../types'
 
-interface MarketStatus {
-  is_open: boolean
-  as_of: string
-  next_open: string
-  next_close: string | null
-}
+
 
 function computeLocalStatus(): MarketStatus {
   const now = new Date()
@@ -45,31 +42,34 @@ function computeLocalStatus(): MarketStatus {
 
 export function useMarketStatus() {
   const [status, setStatus] = useState<MarketStatus>(computeLocalStatus)
+  const retryRef = useRef(0)
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/market/status', { signal })
-      if (res.ok) {
-        const data = await res.json()
-        setStatus(data)
-        return
-      }
-    } catch {
-      console.warn('Market status fetch failed, using computed status')
+      const data = await fetchMarketStatus(signal)
+      setStatus(data)
+      retryRef.current = 0
+      return
+    } catch (e) {
+      const name = e instanceof Error ? e.name : typeof e
+      console.warn('Market status fetch failed: [%s] %s', name, e instanceof Error ? e.message : String(e))
     }
     setStatus(computeLocalStatus())
+    if (retryRef.current < 3) {
+      retryRef.current++
+      await new Promise(r => setTimeout(r, retryRef.current * 2000))
+      if (!signal?.aborted) await refresh(signal)
+    }
   }, [])
 
   useEffect(() => {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 5000)
-    refresh(controller.signal).finally(() => clearTimeout(timeout))
+    const startupTimer = setTimeout(() => refresh(controller.signal), 3000)
     const interval = setInterval(() => {
       const c = new AbortController()
-      const t = setTimeout(() => c.abort(), 5000)
-      refresh(c.signal).finally(() => clearTimeout(t))
+      refresh(c.signal)
     }, 60000)
-    return () => { clearInterval(interval); controller.abort() }
+    return () => { clearTimeout(startupTimer); clearInterval(interval); controller.abort() }
   }, [refresh])
 
   return status

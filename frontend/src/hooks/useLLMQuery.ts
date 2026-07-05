@@ -18,7 +18,7 @@ export interface StreamCallbacks {
   onStatus?: (status: string) => void
 }
 
-export function useHermesStream() {
+export function useLLMStream() {
   const [isPending, setIsPending] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -32,11 +32,19 @@ export function useHermesStream() {
 
     const timeoutId = setTimeout(() => controller.abort(), 180000)
 
+    let fullAnswer = ''
+
     try {
+      let history: { role: string; content: string }[] = []
+      try {
+        const stored = localStorage.getItem('nepse-chat-history')
+        if (stored) history = JSON.parse(stored).slice(-6)
+      } catch {}
+
       const res = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, history }),
         signal: controller.signal,
       })
 
@@ -46,7 +54,6 @@ export function useHermesStream() {
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
-      let fullAnswer = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -72,7 +79,7 @@ export function useHermesStream() {
               callbacks.onStatus(msg.status)
             }
           } catch (e) {
-            console.warn('[useHermesStream] parse error on line:', trimmed.slice(0, 80), e)
+            console.warn('[useLLMStream] parse error on line:', trimmed.slice(0, 80), e)
           }
         }
       }
@@ -89,7 +96,7 @@ export function useHermesStream() {
             callbacks.onStatus(msg.status)
           }
         } catch (e) {
-          console.warn('[useHermesStream] parse error on remaining buffer:', buffer.trim().slice(0, 80), e)
+          console.warn('[useLLMStream] parse error on remaining buffer:', buffer.trim().slice(0, 80), e)
         }
       }
     } catch (err: unknown) {
@@ -115,10 +122,16 @@ export function useHermesStream() {
 }
 
 async function collectAnswer(question: string): Promise<AskResponse> {
+  let history: { role: string; content: string }[] = []
+  try {
+    const stored = localStorage.getItem('nepse-chat-history')
+    if (stored) history = JSON.parse(stored).slice(-6)
+  } catch {}
+
   const res = await fetch('/api/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, history }),
   })
   if (!res.ok) throw new Error('Failed to get answer')
   if (!res.body) throw new Error('No response body')
@@ -154,7 +167,7 @@ async function collectAnswer(question: string): Promise<AskResponse> {
   return { answer, ...meta }
 }
 
-export function useHermesAsk() {
+export function useLLMAsk() {
   return useMutation<AskResponse, Error, string>({
     mutationFn: collectAnswer,
   })

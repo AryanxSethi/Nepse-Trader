@@ -9,26 +9,32 @@ import RefreshIndicator from '../components/RefreshIndicator'
 import { SkeletonCard, SkeletonChart } from '../components/Skeleton'
 import { TrendingUpIcon, TrendingDownIcon, SearchIcon, ChartIcon } from '../components/Icons'
 import { formatNPR, formatPercent, formatChange } from '../utils/format'
+import { fetchIndexHistory, fetchMarketLive } from '../api/endpoints'
 
 interface IndexData {
   name: string
-  value: number
-  change: number
-  percent_change: number
+  value: number | null
+  change: number | null
+  percent_change: number | null
 }
 
 interface StockPrice {
   symbol: string
-  ltp: number
-  change: number
-  percent_change: number
-  volume: number
-  turnover: number
-  high: number
-  low: number
+  ltp: number | null
+  percent_change: number | null
+  volume?: number | null
+  turnover?: number | null
 }
 
 type SortKey = 'symbol' | 'ltp' | 'percent_change' | 'volume' | 'turnover'
+
+function formatTurnover(val: number | null | undefined): string {
+  if (val == null) return '\u2014'
+  if (val >= 1e9) return `${(val / 1e9).toFixed(2)}B`
+  if (val >= 1e6) return `${(val / 1e6).toFixed(2)}M`
+  if (val >= 1e3) return `${(val / 1e3).toFixed(2)}K`
+  return val.toFixed(2)
+}
 
 export default function LiveMarket() {
   const navigate = useNavigate()
@@ -53,11 +59,8 @@ export default function LiveMarket() {
     let id: ReturnType<typeof setInterval> | null = null
     const fetchSnapshots = async () => {
       try {
-        const res = await fetch('/api/market/index-history')
-        if (res.ok) {
-          const json = await res.json()
-          if (json.snapshots) setSnapshots(json.snapshots)
-        }
+        const json = await fetchIndexHistory()
+        if (json.snapshots) setSnapshots(json.snapshots as any)
       } catch { /* ignore */ }
     }
     fetchSnapshots()
@@ -136,12 +139,7 @@ export default function LiveMarket() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch('/api/market/live')
-      if (!res.ok) {
-        setError(`Server error (${res.status})`)
-        return
-      }
-      const json = await res.json()
+      const json = await fetchMarketLive()
       setIndices(json.indices || [])
       setPrices(json.prices || [])
       setError(null)
@@ -290,11 +288,11 @@ export default function LiveMarket() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => {
+                {filtered.map((p, i) => {
                   const isPositive = (p.percent_change ?? 0) >= 0
                   return (
                     <tr
-                      key={p.symbol}
+                      key={`${p.symbol}-${i}`}
                       onClick={() => navigate(`/trade?symbol=${p.symbol}`)}
                       className="border-b border-border/50 hover:bg-surface-hover/50 transition-colors cursor-pointer"
                     >
@@ -314,13 +312,7 @@ export default function LiveMarket() {
                         {p.volume?.toLocaleString() ?? '\u2014'}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono-nums text-text-muted hidden md:table-cell">
-                        {(p.turnover ?? 0) >= 1e9
-                          ? `${(p.turnover / 1e9).toFixed(2)}B`
-                          : (p.turnover ?? 0) >= 1e6
-                            ? `${(p.turnover / 1e6).toFixed(2)}M`
-                            : (p.turnover ?? 0) >= 1e3
-                              ? `${(p.turnover / 1e3).toFixed(2)}K`
-                              : p.turnover?.toFixed(2) ?? '\u2014'}
+                        {formatTurnover(p.turnover)}
                       </td>
                     </tr>
                   )

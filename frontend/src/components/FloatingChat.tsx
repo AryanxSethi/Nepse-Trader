@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useHermesStream } from '../hooks/useHermesQuery'
+import { useLLMStream } from '../hooks/useLLMQuery'
 import { ChatIcon, BrainIcon, CloseIcon } from './Icons'
 
 interface ParsedResult {
@@ -21,7 +21,7 @@ export default function FloatingChat({ symbol, onParsedResult }: Props) {
   const [streamingContent, setStreamingContent] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [llmStatus, setLlmStatus] = useState<string | null>(null)
-  const { stream, isPending, error } = useHermesStream()
+  const { stream, isPending, error } = useLLMStream()
   const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -32,7 +32,7 @@ export default function FloatingChat({ symbol, onParsedResult }: Props) {
     if (error && !isStreaming) {
       setMessages((prev) => [...prev, {
         role: 'assistant',
-        content: 'Unable to reach the AI assistant. Make sure Ollama or OpenRouter is configured.',
+          content: 'Unable to reach the AI assistant. Make sure Ollama is running.',
       }])
     }
   }, [error, isStreaming])
@@ -71,7 +71,7 @@ export default function FloatingChat({ symbol, onParsedResult }: Props) {
       onError: () => {
         setMessages((prev) => [...prev, {
           role: 'assistant',
-          content: 'Unable to reach the AI assistant. Make sure Ollama or OpenRouter is configured.',
+        content: 'Unable to reach the AI assistant. Make sure Ollama is running.',
         }])
         setStreamingContent('')
         setIsStreaming(false)

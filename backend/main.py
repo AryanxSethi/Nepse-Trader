@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 
-from config import OLLAMA_URL, OLLAMA_MODEL, OPENROUTER_KEY, OPENROUTER_MODEL
+from config import OLLAMA_URL, OLLAMA_MODEL
 from database import init_db, async_session
 from models import Security, DailyPrice, Signal, PortfolioHolding
 from data.fetcher import (
@@ -81,7 +81,7 @@ async def seed_daily_history(cache: dict):
 
     if not records:
         try:
-            html = await merolagani_fetcher._get('/Indices.aspx')
+            html = await merolagani_fetcher.get_index_history_page()
             if html:
                 from bs4 import BeautifulSoup
                 soup = BeautifulSoup(html, 'html.parser')
@@ -141,8 +141,8 @@ async def start_index_polling(cache: dict, ever_had_signalr: bool = False):
                         all_indices = await merolagani_fetcher.get_live_index()
                         if all_indices:
                             ever_had_signalr = True
-                    except Exception:
-                        logger.warning("Merolagani SignalR index poll failed")
+                    except Exception as e:
+                        logger.warning("Merolagani SignalR index poll failed: %s", e)
 
                 if not all_indices and not ever_had_signalr:
                     yonepse_indices = await fetch_indices()
@@ -217,6 +217,8 @@ async def lifespan(app: FastAPI):
         set_security_cache(symbols)
     except Exception as e:
         logger.warning("Failed to load securities cache: %s", e)
+        symbols = []
+        set_security_cache(symbols)
     try:
         count = await run_daily_update()
         if count > 0:
@@ -233,7 +235,7 @@ async def lifespan(app: FastAPI):
         await _ensure_broker_cache()
     except Exception as e:
         logger.warning("Failed to prewarm broker cache: %s", e)
-    disk_live = load_live_cache()
+    disk_live = await load_live_cache()
     async with live_cache_lock:
         for k, v in disk_live.items():
             if v is not None:
@@ -244,7 +246,7 @@ async def lifespan(app: FastAPI):
     await start_index_polling(LIVE_CACHE, has_signalr)
     yield
     async with live_cache_lock:
-        persist_live_cache(LIVE_CACHE)
+        await persist_live_cache(LIVE_CACHE)
     await persist_caches_on_exit()
     await merolagani_fetcher.stop()
     await sharesansar_fetcher.stop()
@@ -252,7 +254,7 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
-app = FastAPI(title="NEPSE Hermes Trader", lifespan=lifespan)
+app = FastAPI(title="NEPSE Trader", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -281,11 +283,11 @@ async def add_cache_headers(request, call_next):
 
 
 async def _fetch_live_all() -> list[dict]:
-    cached_data, cached_ts = get_market_cache()
+    cached_data, cached_ts = await get_market_cache()
     try:
         data = await fetch_all_securities()
         if data:
-            set_market_cache(data)
+            await set_market_cache(data)
             async with live_cache_lock:
                 LIVE_CACHE["data"] = data
                 LIVE_CACHE["timestamp"] = datetime.now(timezone.utc)
@@ -366,8 +368,14 @@ def _compute_point_change(ltp: float | None, percent_change: float | None) -> fl
 def _enrich_item(item: dict, price_map: dict) -> dict:
     sym = item.get("symbol", "")
     p = price_map.get(sym.upper(), {})
-    ltp = item.get("ltp") or p.get("ltp")
-    pct = item.get("percent_change") or item.get("change") or p.get("percent_change")
+    ltp = item.get("ltp")
+    if ltp is None:
+        ltp = p.get("ltp")
+    pct = item.get("percent_change")
+    if pct is None:
+        pct = item.get("change")
+    if pct is None:
+        pct = p.get("percent_change")
     if isinstance(pct, str):
         try:
             pct = float(pct.replace('%', ''))
@@ -529,7 +537,7 @@ async def market_live():
 
         ss_prices = ss_data.get('prices', [])
         if ss_prices:
-            ss_by_symbol = {p['symbol'].upper(): p for p in ss_prices if p.get('symbol')}
+            ss_by_symbol = {p['symbol'].upper(): p for p in ss_prices if 'symbol' in p and p['symbol']}
             for p in prices:
                 sym = p.get('symbol', '').upper()
                 ss = ss_by_symbol.get(sym)
@@ -1006,12 +1014,12 @@ async def _fetch_yonepse_history(symbol: str, max_days: int = 120) -> list[dict]
 @app.get("/api/ipos")
 async def get_ipos(page: int = 1, per_page: int = 20):
     if page == 1 and per_page == 20:
-        cached, ts = get_ipo_cache()
+        cached, ts = await get_ipo_cache()
         if cached:
             return cached
     result = await load_ipos(page=page, per_page=per_page)
     if page == 1 and per_page == 20 and result.get('data'):
-        set_ipo_cache(result)
+        await set_ipo_cache(result)
     return result
 
 
@@ -1039,25 +1047,57 @@ async def sector_stocks(sector_name: str):
 
 
 GUIDE_SYSTEM_PROMPT = (
-    "You are a NEPSE trading guide assistant. Only answer questions about:\n"
-    "- NEPSE stocks, trading, and investing in Nepal\n"
-    "- Nepali stock market regulations, brokers, demat accounts, MeroShare\n"
-    "- Technical and fundamental analysis of Nepali stocks\n"
-    "- Trading fees, charges, taxes in Nepal\n\n"
-    "RULES:\n"
-    "1. NEVER predict future stock prices. Never say 'I cannot predict' — instead, "
-    "say 'I cannot guarantee future prices, but here is my analysis of the current data.'\n"
-    "2. You MAY offer financial suggestions and directional opinions based on data "
-    "(e.g. 'the indicators suggest bullish momentum', 'the stock looks overbought'). "
-    "Frame everything as analysis, not recommendation.\n"
-    "3. ALWAYS include a risk warning: 'The stock market involves risk. This is not financial advice.'\n"
-    "4. If the question is NOT about Nepali stocks, trading, or investing, say:\n"
-    "   'I can only answer questions about NEPSE trading and the Nepali stock market.'\n"
-    "5. Cite official sources when possible (SEBON, CDSC, NEPSE).\n"
-    "6. Answer in exactly 2-3 short sentences. Be direct. No bullet points.\n"
-    "7. If you don't know something, say so honestly.\n"
-    "8. The risk warning must be a single short sentence at the end.\n"
-    "KEEP YOUR ANSWER TO 2-3 SENTENCES."
+    "You are a NEPSE trading data analyst assistant. Your role is to analyze "
+    "provided market data and explain what the numbers indicate.\n\n"
+    "SCOPE:\n"
+    "- Only answer NEPSE stocks, trading, investing, regulations, "
+    "brokers, demat accounts, MeroShare, technical/fundamental analysis, fees, "
+    "and taxes in Nepal.\n"
+    "- If asked about anything else, politely decline.\n\n"
+    "TONE & CONVERSATION:\n"
+    "- Be friendly, warm, and approachable. You are a helpful assistant, not a data report.\n"
+    "- Greetings (\"hi\", \"hello\", \"good morning\"): respond warmly and offer help.\n"
+    "  Example: \"Hi! I can look up stock data, explain indicators, or give a market overview. What would you like to know?\"\n"
+    "- \"Thank you\" / \"thanks\": respond \"You're welcome!\" and offer follow-up help.\n"
+    "- \"Explain more\" / \"elaborate\" / \"tell me more about\": expand on your previous answer with additional detail or examples — do not just repeat the same info.\n"
+    "- \"Please\": acknowledge politely in your response.\n"
+    "- End every exchange with an offer for further help when appropriate.\n"
+    "- Always maintain data accuracy — friendliness never means inventing data.\n\n"
+    "CONVERSATION ENDING:\n"
+    "- Recognize farewell intent when the user says phrases like:\n"
+    "  \"thank you\", \"thanks\", \"dhanyabad\", \"bye\", \"goodbye\", \"see you\",\n"
+    "  \"that's all\", \"that's all for now\", \"nothing more\", \"nothing else\",\n"
+    "  \"nothing else for now\", \"no more questions\", \"all done\", \"i'm done\",\n"
+    "  and similar closing phrases.\n"
+    "- If the message is ONLY a closing (no new question or topic), respond\n"
+    "  with a warm, final closing message and do NOT offer follow-up help.\n"
+    "- The closing should include \"Dhanyabad\" as the sign-off word\n"
+    "  and the disclaimer on its own line.\n"
+    "- Examples:\n"
+    "  User: \"That's all for now, thank you.\"\n"
+    "  Assistant: \"Dhanyabad! Happy trading, and remember — the stock market "
+    "involves risk. Invest wisely.\"\n\n"
+    "  User: \"Nothing else.\"\n"
+    "  Assistant: \"Dhanyabad! Wishing you successful investments. "
+    "The stock market involves risk — this is not financial advice.\"\n\n"
+    "GUIDELINES:\n"
+    "1. Base ALL numerical claims on PROVIDED DATA. If a metric is not in the "
+    "data, say 'not available' — never guess.\n"
+    "2. You may explain what indicators suggest (e.g., 'RSI above 70 = overbought'), "
+    "but note past patterns do not guarantee future results.\n"
+    "3. Offer directional analysis based on data, framed as analysis not recommendation.\n"
+    "4. ALWAYS include: 'The stock market involves risk. This is not financial advice.'\n"
+    "5. Cite NEPSE as data source.\n"
+    "6. If you don't know something, say so honestly.\n\n"
+    "STRICT FORMAT RULES:\n"
+    "- Start data-backed responses with a one-line market snapshot (NEPSE + Sensitive index).\n"
+    "- For stock data: use a single compact line per stock.\n"
+    "  Example: **NABIL** | NPR 485.20 | +2.15% | Vol: 52,341 | RSI: 32.5\n"
+    "- For technical indicators: one bullet per indicator with brief interpretation "
+    "(e.g. '- RSI 32.5: oversold territory').\n"
+    "- For market overview: use **bold section headers** and short bullet lists.\n"
+    "- MAXIMUM 12 lines. No paragraph longer than 2 sentences.\n"
+    "- End with the disclaimer on its own line."
 )
 
 
@@ -1079,7 +1119,7 @@ async def guide_search(q: str = ""):
                         {"role": "user", "content": q},
                     ],
                     "stream": False,
-                    "options": {"temperature": 0.2, "num_predict": 512},
+                    "options": {"temperature": 0.5, "num_predict": 512},
                 },
             )
             data = resp.json()
@@ -1099,6 +1139,7 @@ async def guide_brokers(search: str = ""):
 
 class QuestionRequest(BaseModel):
     question: str
+    history: list[dict] = []
 
 
 def detect_intent(query: str, symbols: list[str]) -> str:
@@ -1123,6 +1164,18 @@ async def build_data_context(symbols: list[str]) -> str:
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
 
     lines = [f"=== REAL MARKET DATA (retrieved {now_str} NST) ==="]
+
+    try:
+        indices_data = await fetch_indices()
+        if indices_data:
+            lines.append("\nMarket Snapshot:")
+            for idx in indices_data:
+                name = idx.get("index", "")
+                val = idx.get("currentValue")
+                chg = idx.get("change", idx.get("perChange"))
+                lines.append(f"  {name}: {val}" + (f" ({chg:+.2f}%)" if chg else ""))
+    except Exception:
+        pass
 
     records_by_symbol = {}
     try:
@@ -1149,9 +1202,63 @@ async def build_data_context(symbols: list[str]) -> str:
         if pct is not None:
             sign = "+" if pct >= 0 else ""
             lines.append(f"  Change: {sign}{pct:.2f}%")
+        prev_close = l.get("previous_close")
+        if prev_close is not None:
+            lines.append(f"  Prev Close: NPR {prev_close}")
+        high = l.get("high")
+        low = l.get("low")
+        if high and low:
+            lines.append(f"  Day Range: NPR {low} - NPR {high}")
         vol = l.get("volume")
         if vol:
             lines.append(f"  Volume: {int(vol):,}")
+        turnover = l.get("turnover")
+        if turnover:
+            lines.append(f"  Turnover: NPR {turnover:,.0f}")
+        trades = l.get("trades")
+        if trades:
+            lines.append(f"  Trades: {int(trades):,}")
+        mcap = l.get("market_cap")
+        if mcap:
+            lines.append(f"  Market Cap: NPR {mcap:,.2f}M")
+
+        detail = None
+        try:
+            cb = merolagani_fetcher.circuit_breaker_status('merolagani')
+            if cb != 'open':
+                detail = await merolagani_fetcher.get_company_detail(sym_u)
+        except Exception:
+            pass
+        if not detail:
+            try:
+                ss_detail = await sharesansar_fetcher.get_company_detail(sym_u)
+                if ss_detail:
+                    ph = ss_detail.get('price_header') or {}
+                    info = ss_detail.get('company_info') or {}
+                    if info.get('sector'):
+                        detail = {'sector': info['sector']}
+                    else:
+                        detail = {}
+                    if ph.get('high_52w') and ph.get('low_52w'):
+                        detail['52w_high'] = str(ph['high_52w'])
+                        detail['52w_low'] = str(ph['low_52w'])
+                    if ph.get('avg_120d'):
+                        detail['120d_avg'] = str(ph['avg_120d'])
+                    if ph.get('avg_180d'):
+                        detail['180d_avg'] = str(ph['avg_180d'])
+            except Exception:
+                pass
+        if detail:
+            if detail.get("sector"):
+                lines.append(f"  Sector: {detail['sector']}")
+            if detail.get("52w_high") and detail.get("52w_low"):
+                lines.append(f"  52W Range: NPR {detail['52w_low']} - NPR {detail['52w_high']}")
+            if detail.get("120d_avg"):
+                lines.append(f"  120D Avg: NPR {detail['120d_avg']}")
+            if detail.get("180d_avg"):
+                lines.append(f"  180D Avg: NPR {detail['180d_avg']}")
+            if detail.get("1y_yield"):
+                lines.append(f"  1Y Yield: {detail['1y_yield']}")
 
         try:
             records = records_by_symbol.get(sym_u, [])
@@ -1189,42 +1296,11 @@ async def build_data_context(symbols: list[str]) -> str:
     return "\n".join(lines)
 
 
-async def _stream_llm(system_prompt: str, question: str, max_tokens: int, timeout_secs: int):
-    if OPENROUTER_KEY:
-        try:
-            async with httpx.AsyncClient(timeout=timeout_secs) as client:
-                async with client.stream(
-                    "POST",
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {OPENROUTER_KEY}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": OPENROUTER_MODEL,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": question},
-                        ],
-                        "stream": True,
-                        "max_tokens": max_tokens,
-                        "temperature": 0.2,
-                    },
-                ) as resp:
-                    async for line in resp.aiter_lines():
-                        if line.startswith("data: [DONE]"):
-                            return
-                        if line.startswith("data: "):
-                            try:
-                                chunk = json.loads(line[6:])
-                                delta = chunk.get("choices", [{}])[0].get("delta", {})
-                                if "content" in delta:
-                                    yield delta["content"]
-                            except json.JSONDecodeError:
-                                pass
-            return
-        except Exception as e:
-            logger.warning("OpenRouter stream failed: %s", e)
+async def _stream_llm(system_prompt: str, question: str, max_tokens: int, timeout_secs: int, history: list[dict] | None = None):
+    messages = [{"role": "system", "content": system_prompt}]
+    if history:
+        messages.extend(history[-6:])
+    messages.append({"role": "user", "content": question})
 
     try:
         async with httpx.AsyncClient(timeout=timeout_secs) as client:
@@ -1233,12 +1309,9 @@ async def _stream_llm(system_prompt: str, question: str, max_tokens: int, timeou
                 f"{OLLAMA_URL}/api/chat",
                 json={
                     "model": OLLAMA_MODEL,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": question},
-                    ],
+                    "messages": messages,
                     "stream": True,
-                    "options": {"temperature": 0.2, "num_predict": max_tokens},
+                    "options": {"temperature": 0.5, "num_predict": max_tokens},
                 },
             ) as resp:
                 async for line in resp.aiter_lines():
@@ -1303,14 +1376,14 @@ async def _generate_answer(req: QuestionRequest):
 
     if symbols:
         ctx_key = "ctx_" + "_".join(sorted(symbols))
-        cached = data_cache_get(ctx_key)
+        cached = await data_cache_get(ctx_key)
         if cached:
             data_context = cached
         else:
             yield json.dumps({"type": "status", "status": "searching"}) + "\n"
             data_context = await build_data_context(symbols)
             if data_context:
-                data_cache_set(ctx_key, data_context)
+                await data_cache_set(ctx_key, data_context)
     elif intent == "overview":
         yield json.dumps({"type": "status", "status": "searching"}) + "\n"
         try:
@@ -1320,17 +1393,36 @@ async def _generate_answer(req: QuestionRequest):
             lines = [f"=== MARKET OVERVIEW (retrieved {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC) ==="]
             if not isinstance(indices, Exception) and indices:
                 lines.append("\nIndices:")
-                for idx in indices[:5]:
+                for idx in indices:
                     name = idx.get("index", "")
                     val = idx.get("currentValue")
                     chg = idx.get("change")
-                    lines.append(f"  - {name}: {val} ({chg:+.2f}%)" if chg else f"  - {name}: {val}")
+                    pct = idx.get("perChange")
+                    high52 = idx.get("fiftyTwoWeekHigh")
+                    low52 = idx.get("fiftyTwoWeekLow")
+                    parts = [f"  {name}: {val}"]
+                    if chg is not None:
+                        parts.append(f"Chg: {chg:+.2f}")
+                    if pct is not None:
+                        parts.append(f"({pct:+.2f}%)")
+                    if high52 and low52:
+                        parts.append(f"52W: {low52} - {high52}")
+                    lines.append(" | ".join(parts))
+            if not isinstance(summary, Exception) and summary:
+                lines.append("\nMarket Summary:")
+                for item in summary[:6]:
+                    if isinstance(item, dict):
+                        detail = item.get("detail", "")
+                        value = item.get("value", "")
+                        if detail and value:
+                            short = detail.replace("Total ", "").replace(" (Rs.)", "")
+                            lines.append(f"  {short}: {value}")
             if not isinstance(tops, Exception) and tops:
                 gainers = tops.get("top_gainer", [])
                 if gainers:
                     lines.append(f"\nTop 5 Gainers:")
                     for g in gainers[:5]:
-                        lines.append(f"  - {g.get('symbol')}: {g.get('percentageChange')}%")
+                        lines.append(f"  - {g.get('symbol')}: {g.get('percentageChange')}+%")
                 losers = tops.get("top_loser", [])
                 if losers:
                     lines.append(f"\nTop 5 Losers:")
@@ -1345,11 +1437,12 @@ async def _generate_answer(req: QuestionRequest):
     else:
         system_prompt = GUIDE_SYSTEM_PROMPT + (
             "\n\nADDITIONAL RULES (data analyst mode):\n"
-            "1. Prioritize the provided REAL market data below for metrics (prices, RSI, volume, etc.).\n"
-            "2. If a metric is not in the data, you may use general market knowledge from your training.\n"
-            "3. If you are unsure about a specific figure, say so.\n"
-            "4. Cite NEPSE as the data source.\n"
-            "KEEP YOUR ANSWER TO 2-3 SENTENCES."
+            "1. Prioritize the provided REAL market data below for all metrics.\n"
+            "2. If a metric is not in the provided data, say it is not available — do NOT use general knowledge.\n"
+            "3. Cite NEPSE as the data source.\n"
+            "4. Organize data into distinct sections with **bold headers** (e.g. **Index**, **Gainers**, **NABIL**).\n"
+            "5. Use compact bullet-point format: one fact per line, no run-on paragraphs.\n"
+            "6. Keep the total response under 12 lines."
         )
 
     if data_context:
@@ -1363,13 +1456,13 @@ async def _generate_answer(req: QuestionRequest):
                        "end_date": end_date.isoformat() if end_date else None}) + "\n"
 
     yield json.dumps({"type": "status", "status": "thinking"}) + "\n"
-    max_tokens = 250 if intent == "compare" else 150
+    max_tokens = 1024
     timeout_secs = 180 if intent == "compare" else 120
     answer_parts: list[str] = []
     token_count = 0
 
     try:
-        async for token in _stream_llm(system_prompt, question, max_tokens, timeout_secs):
+        async for token in _stream_llm(system_prompt, question, max_tokens, timeout_secs, req.history):
             if token:
                 answer_parts.append(token)
                 token_count += 1
@@ -1408,13 +1501,11 @@ async def health():
         logger.warning("Health check DB failed: %s", e)
 
     from data.fetcher import circuit_breaker as fetcher_cb
-    from data.merolagani_fetcher import circuit_breaker as mero_cb
-    from data.sharesansar_fetcher import circuit_breaker as ss_cb
 
     sources = {
         'yonepse': fetcher_cb.status('yonepse/live'),
-        'merolagani': mero_cb.status('merolagani'),
-        'sharesansar': ss_cb.status('sharesansar'),
+        'merolagani': merolagani_fetcher.circuit_breaker_status('merolagani'),
+        'sharesansar': sharesansar_fetcher.circuit_breaker_status('sharesansar'),
         'nepalipaisa': fetcher_cb.status('nepalipaisa/ipo'),
     }
 

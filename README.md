@@ -1,4 +1,4 @@
-# NEPSE Hermes Trader
+# NEPSE Trader
 
 A real-time NEPSE stock analysis platform with technical indicators, portfolio tracking, and LLM-powered chat assistant.
 
@@ -11,13 +11,13 @@ A real-time NEPSE stock analysis platform with technical indicators, portfolio t
 - **Floorsheet Data** — Transaction-level trade history from Sharesansar
 - **Backtesting** — SMA crossover strategy backtester with equity curves
 - **IPO Database** — Paginated IPO listings from nepalipaisa with BS/AD dates
-- **LLM Chat** — Streaming AI assistant using OpenRouter (primary) or local Ollama (fallback)
+- **LLM Chat** — Streaming AI assistant powered by local Ollama
 - **Fuzzy Search** — Smart search with time-aware queries ("NABIL last 3 months")
 
 ## Architecture
 
 ```
-nepse-hermes-trader/
+nepse-trader/
 ├── backend/                  # FastAPI (Python)
 │   ├── main.py               # 27+ API routes, SSE streaming
 │   ├── config.py             # Environment config
@@ -86,16 +86,10 @@ Dev server on `http://127.0.0.1:5173`. Proxies `/api` to `127.0.0.1:8001`.
 
 ### LLM Chat Setup
 
-1. **Ollama (free, default):** Install Ollama, pull Hermes 3:
-   ```bash
-   ollama pull hermes3
-   ```
-
-2. **OpenRouter (optional, recommended):**
-   ```bash
-   export OPENROUTER_KEY="sk-or-..."
-   export OPENROUTER_MODEL="nousresearch/hermes-3-llama-3.1-8b"
-   ```
+Install Ollama and pull the model:
+```bash
+ollama pull qwen2.5:7b-instruct-q4_k_m
+```
 
 ## API Endpoints
 
@@ -153,9 +147,7 @@ Environment variables (`.env` or system):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama server URL |
-| `OLLAMA_MODEL` | `hermes3` | Ollama model name |
-| `OPENROUTER_KEY` | `""` | OpenRouter API key |
-| `OPENROUTER_MODEL` | `nousresearch/hermes-3-llama-3.1-8b` | OpenRouter model |
+| `OLLAMA_MODEL` | `qwen2.5:7b-instruct-q4_k_m` | Ollama model name |
 
 ## License
 
