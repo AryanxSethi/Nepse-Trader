@@ -5,8 +5,10 @@ import { useSignals } from '../hooks/useStockData'
 import RefreshIndicator from '../components/RefreshIndicator'
 import { PageTransition } from '../components/Navbar'
 import { SignalIcon, WarningIcon } from '../components/Icons'
+import { usePageTitle } from '../hooks/usePageTitle'
 
 export default function Signals() {
+  usePageTitle('Signals')
   const navigate = useNavigate()
   const [signalType, setSignalType] = useState('')
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)

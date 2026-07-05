@@ -15,6 +15,7 @@ import { formatNPR } from '../utils/format'
 import { useStockHistory } from '../hooks/useStockData'
 const MS_PER_DAY = 86400000
 import { PageTransition } from '../components/Navbar'
+import { usePageTitle } from '../hooks/usePageTitle'
 import { fetchStockDetail } from '../api/endpoints'
 import { CompanyIcon, WarningIcon, ChartIcon, CompareIcon, TableIcon } from '../components/Icons'
 
@@ -23,6 +24,7 @@ function toDateStr(d: Date): string {
 }
 
 export default function Trade() {
+  usePageTitle('Stock Analysis')
   const [searchParams, setSearchParams] = useSearchParams()
   const [symbol, setSymbol] = useState(searchParams.get('symbol') || '')
   const [dateDays, setDateDays] = useState(90)

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type JSX } from 'react'
+import { usePageTitle } from '../hooks/usePageTitle'
 import { PageTransition } from '../components/Navbar'
 import ErrorBanner from '../components/ErrorBanner'
 import RefreshIndicator from '../components/RefreshIndicator'
@@ -101,6 +102,7 @@ function statusBadge(status: string): JSX.Element | null {
 const PAGE_SIZE = 20
 
 export default function IPOSection() {
+  usePageTitle('IPO / FPO')
   const [activeGuide, setActiveGuide] = useState<number | null>(null)
   const [items, setItems] = useState<IPOItem[]>([])
   const [pager, setPager] = useState<Pager | null>(null)

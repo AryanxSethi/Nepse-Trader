@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
+import { toast } from 'sonner'
 import { PageTransition } from '../components/Navbar'
 import FloatingChat from '../components/FloatingChat'
 import ErrorBanner from '../components/ErrorBanner'
@@ -8,8 +9,10 @@ import SymbolSearchInput from '../components/SymbolSearchInput'
 import { formatNPR, formatPercent, formatChange } from '../utils/format'
 import { fetchPortfolio, addHolding, deleteHolding } from '../api/endpoints'
 import type { PortfolioHolding } from '../api/endpoints'
+import { usePageTitle } from '../hooks/usePageTitle'
+import { POLL } from '../config/constants'
 import {
-  TrendingUpIcon, TrendingDownIcon, CloseIcon,
+  TrendingUpIcon, TrendingDownIcon, CloseIcon, WarningIcon,
 } from '../components/Icons'
 
 interface PortfolioData {
@@ -45,6 +48,7 @@ function AddHoldingModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
       await addHolding(symbol.trim().toUpperCase(), qty, cost, buyDate)
       onAdded()
       onClose()
+      toast.success('Holding added')
     } catch (e: any) {
       setError(e.message || 'Failed to add holding')
     } finally {
@@ -102,12 +106,14 @@ function AddHoldingModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
 }
 
 export default function Portfolio() {
+  usePageTitle('Portfolio')
   const [data, setData] = useState<PortfolioData | null>(null)
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null)
 
   const loadPortfolio = useCallback(async () => {
     try {
@@ -130,7 +136,7 @@ export default function Portfolio() {
 
   useEffect(() => {
     loadPortfolio()
-    const id = setInterval(loadPortfolio, 30000)
+    const id = setInterval(loadPortfolio, POLL.PORTFOLIO)
     return () => clearInterval(id)
   }, [loadPortfolio])
 
@@ -138,9 +144,11 @@ export default function Portfolio() {
     try {
       await deleteHolding(id)
       setDeleteError(null)
+      setConfirmDelete(null)
       loadPortfolio()
+      toast.success('Holding removed')
     } catch {
-      setDeleteError('Failed to delete holding')
+      toast.error('Failed to delete holding')
     }
   }
 
@@ -262,13 +270,31 @@ export default function Portfolio() {
                         {formatPercent(h.pnl != null && h.invested > 0 ? (h.pnl / h.invested) * 100 : null)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => handleDelete(h.id)}
+                        {confirmDelete === h.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-red">Sure?</span>
+                            <button
+                              onClick={() => handleDelete(h.id)}
+                              className="text-xs text-red font-medium hover:text-red/80 transition-colors"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              onClick={() => setConfirmDelete(null)}
+                              className="text-xs text-text-muted hover:text-text transition-colors"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                          onClick={() => setConfirmDelete(h.id)}
                           className="text-text-muted hover:text-red transition-colors"
                           title="Remove"
                         >
                           <CloseIcon size={14} />
                         </button>
+                        )}
                       </td>
                     </motion.tr>
                   )

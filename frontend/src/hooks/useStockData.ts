@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMarketStatus } from './useMarketStatus'
 import { fetchMarketOverview, fetchStockHistory, fetchSignals, fetchBacktest } from '../api/endpoints'
+import { POLL } from '../config/constants'
 
 export function useMarketOverview() {
   const { is_open } = useMarketStatus()
-  const interval = is_open ? 15_000 : false
+  const interval = is_open ? POLL.MARKET_OVERVIEW_OPEN : false
 
   return useQuery({
     queryKey: ['market-overview'],
@@ -15,7 +16,7 @@ export function useMarketOverview() {
 
 export function useStockHistory(symbol: string, start: string, end: string) {
   const { is_open } = useMarketStatus()
-  const interval = is_open ? 60_000 : false
+  const interval = is_open ? POLL.STOCK_HISTORY_OPEN : false
 
   return useQuery({
     queryKey: ['stock-history', symbol, start, end],
@@ -27,7 +28,7 @@ export function useStockHistory(symbol: string, start: string, end: string) {
 
 export function useSignals(type?: string) {
   const { is_open } = useMarketStatus()
-  const interval = is_open ? 120_000 : false
+  const interval = is_open ? POLL.SIGNALS_OPEN : false
 
   return useQuery({
     queryKey: ['signals', type || 'all'],

@@ -2,6 +2,7 @@
 import { Link } from 'react-router-dom'
 import QuestionInput from '../components/QuestionInput'
 import GuideAnswer from '../components/GuideAnswer'
+import { usePageTitle } from '../hooks/usePageTitle'
 import { PageTransition } from '../components/Navbar'
 import { BookIcon, BrainIcon, CompanyIcon } from '../components/Icons'
 import { fetchGuideSearch } from '../api/endpoints'
@@ -15,6 +16,7 @@ const popularTopics = [
 ]
 
 export default function Guide() {
+  usePageTitle('Market Guide')
   const [curatedAnswer, setCuratedAnswer] = useState<{
     entry: { id: string; keywords: string[]; title: string; content: string[]; sources: { name: string; url: string }[] } | null
     llm_answer?: string | null

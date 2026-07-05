@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createChart, ColorType, LineSeries } from 'lightweight-charts'
 import { useMarketStatus } from '../hooks/useMarketStatus'
+import { usePageTitle } from '../hooks/usePageTitle'
 import { PageTransition } from '../components/Navbar'
 import FloatingChat from '../components/FloatingChat'
 import ErrorBanner from '../components/ErrorBanner'
@@ -10,6 +11,7 @@ import { SkeletonCard, SkeletonChart } from '../components/Skeleton'
 import { TrendingUpIcon, TrendingDownIcon, SearchIcon, ChartIcon } from '../components/Icons'
 import { formatNPR, formatPercent, formatChange } from '../utils/format'
 import { fetchIndexHistory, fetchMarketLive } from '../api/endpoints'
+import { POLL } from '../config/constants'
 
 interface IndexData {
   name: string
@@ -53,6 +55,7 @@ export default function LiveMarket() {
   const nepseSeriesRef = useRef<ReturnType<ReturnType<typeof createChart>['addSeries']> | null>(null)
   const sensSeriesRef = useRef<ReturnType<ReturnType<typeof createChart>['addSeries']> | null>(null)
 
+  usePageTitle('Live Market')
   const marketStatus = useMarketStatus()
 
   useEffect(() => {
@@ -65,7 +68,7 @@ export default function LiveMarket() {
     }
     fetchSnapshots()
     if (marketStatus.is_open) {
-      id = setInterval(fetchSnapshots, 15000)
+      id = setInterval(fetchSnapshots, POLL.SNAPSHOT_OPEN)
     }
     return () => { if (id) clearInterval(id) }
   }, [marketStatus.is_open])
@@ -155,7 +158,7 @@ export default function LiveMarket() {
     fetchData()
     let id: ReturnType<typeof setInterval> | null = null
     if (marketStatus.is_open) {
-      id = setInterval(fetchData, 15000)
+      id = setInterval(fetchData, POLL.MARKET_OVERVIEW_OPEN)
     }
     return () => { if (id) clearInterval(id) }
   }, [fetchData, marketStatus.is_open])

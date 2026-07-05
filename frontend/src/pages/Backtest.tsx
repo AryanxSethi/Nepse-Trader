@@ -3,6 +3,7 @@ import EquityCurve from '../components/EquityCurve'
 import RefreshIndicator from '../components/RefreshIndicator'
 import { SkeletonBlock } from '../components/Skeleton'
 import { useBacktest } from '../hooks/useStockData'
+import { usePageTitle } from '../hooks/usePageTitle'
 import { PageTransition } from '../components/Navbar'
 import { BacktestIcon, WarningIcon, SearchIcon } from '../components/Icons'
 import { fetchSecurities } from '../api/endpoints'
@@ -13,6 +14,7 @@ interface StockOption {
 }
 
 export default function Backtest() {
+  usePageTitle('Backtest')
   const [symbol, setSymbol] = useState('NABIL')
   const [fastMA, setFastMA] = useState(20)
   const [slowMA, setSlowMA] = useState(50)

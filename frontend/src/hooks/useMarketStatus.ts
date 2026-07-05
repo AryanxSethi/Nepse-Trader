@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchMarketStatus } from '../api/endpoints'
 import type { MarketStatus } from '../types'
-
+import { POLL, NPT_OFFSET_MINUTES } from '../config/constants'
 
 
 function computeLocalStatus(): MarketStatus {
   const now = new Date()
-  const nptOffset = 5 * 60 + 45
   const utc = now.getTime() + now.getTimezoneOffset() * 60000
-  const npt = new Date(utc + nptOffset * 60000)
+  const npt = new Date(utc + NPT_OFFSET_MINUTES * 60000)
 
   const day = npt.getDay()
   const hours = npt.getHours()
@@ -68,7 +67,7 @@ export function useMarketStatus() {
     const interval = setInterval(() => {
       const c = new AbortController()
       refresh(c.signal)
-    }, 60000)
+    }, POLL.MARKET_STATUS)
     return () => { clearTimeout(startupTimer); clearInterval(interval); controller.abort() }
   }, [refresh])
 

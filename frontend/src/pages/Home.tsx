@@ -7,6 +7,7 @@ import FloatingChat from '../components/FloatingChat'
 import { SkeletonCard } from '../components/Skeleton'
 import { useMarketOverview } from '../hooks/useStockData'
 import { useMarketStatus } from '../hooks/useMarketStatus'
+import { usePageTitle } from '../hooks/usePageTitle'
 import { PageTransition } from '../components/Navbar'
 import { formatNPR, formatChange } from '../utils/format'
 import { WarningIcon, TrendingUpIcon, TrendingDownIcon, ChartIcon, ArrowRightIcon } from '../components/Icons'
@@ -28,6 +29,7 @@ function formatTurnover(val: number | null | undefined): string {
 }
 
 export default function Home() {
+  usePageTitle('Market Overview')
   const navigate = useNavigate()
   const { data, isLoading, error } = useMarketOverview()
   const marketStatus = useMarketStatus()

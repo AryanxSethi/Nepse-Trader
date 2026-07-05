@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { usePageTitle } from '../hooks/usePageTitle'
 import { PageTransition } from '../components/Navbar'
 import RefreshIndicator from '../components/RefreshIndicator'
 import { SearchIcon, CompanyIcon, WarningIcon } from '../components/Icons'
@@ -27,6 +28,7 @@ function formatTurnover(n: number): string {
 }
 
 export default function Brokers() {
+  usePageTitle('Brokers')
   const [brokers, setBrokers] = useState<BrokerData[]>([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')

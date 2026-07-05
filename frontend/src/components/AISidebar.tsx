@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CompanyIcon, BrainIcon, CloseIcon } from './Icons'
+import { POLL } from '../config/constants'
 
 const STORAGE_KEY = 'nepse-watchlist'
 
@@ -64,7 +65,7 @@ export default function AISidebar({ onSelectSymbol, currentSymbol }: Props) {
 
   useEffect(() => {
     refreshPrices()
-    const id = setInterval(refreshPrices, 60000)
+    const id = setInterval(refreshPrices, POLL.WATCHLIST)
     return () => clearInterval(id)
   }, [refreshPrices])
 
