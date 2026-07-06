@@ -14,7 +14,7 @@ class Base(DeclarativeBase):
 
 async def init_db():
     async with engine.begin() as conn:
-        from models import Security, DailyPrice, Signal, BacktestResult, PortfolioHolding
+        from models import Security, DailyPrice, Signal, PortfolioHolding
         await conn.run_sync(Base.metadata.create_all)
 
 

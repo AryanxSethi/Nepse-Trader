@@ -88,8 +88,8 @@ export interface PortfolioHolding {
 
 // --- Market ---
 
-export function fetchMarketOverview(): Promise<MarketOverview> {
-  return apiGet(`${API_BASE}/market/overview`)
+export function fetchMarketOverview(opts?: { signal?: AbortSignal }): Promise<MarketOverview> {
+  return apiGet(`${API_BASE}/market/overview`, opts)
 }
 
 export interface LivePriceEntry {
@@ -108,22 +108,27 @@ export interface LiveIndexEntry {
   percent_change: number | null
 }
 
-export function fetchMarketLive(): Promise<{ prices: LivePriceEntry[]; indices: LiveIndexEntry[]; timestamp: string | null }> {
-  return apiGet(`${API_BASE}/market/live`)
+export function fetchMarketLive(opts?: { signal?: AbortSignal }): Promise<{ prices: LivePriceEntry[]; indices: LiveIndexEntry[]; timestamp: string | null }> {
+  return apiGet(`${API_BASE}/market/live`, opts)
 }
 
-export function fetchIndexHistory(): Promise<{ snapshots: { time: number; value: number }[] }> {
-  return apiGet(`${API_BASE}/market/index-history`)
+export interface IndexSnapshot {
+  time: number
+  values: Record<string, number>
+}
+
+export function fetchIndexHistory(opts?: { signal?: AbortSignal }): Promise<{ snapshots: IndexSnapshot[]; points: { time: number; value: number }[]; current: unknown; indices: unknown; last_updated: number | null }> {
+  return apiGet(`${API_BASE}/market/index-history`, opts)
 }
 
 // --- Companies & Securities ---
 
-export function fetchCompanies(): Promise<{ symbol: string; name: string; ltp?: number; percent_change?: number }[]> {
-  return apiGet(`${API_BASE}/companies`)
+export function fetchCompanies(opts?: { signal?: AbortSignal }): Promise<{ symbol: string; name: string; ltp?: number; percent_change?: number }[]> {
+  return apiGet(`${API_BASE}/companies`, opts)
 }
 
-export function fetchSecurities(): Promise<Stock[]> {
-  return apiGet(`${API_BASE}/securities`)
+export function fetchSecurities(opts?: { signal?: AbortSignal }): Promise<Stock[]> {
+  return apiGet(`${API_BASE}/securities`, opts)
 }
 
 export interface SearchResponse {
@@ -133,14 +138,14 @@ export interface SearchResponse {
   end?: string
 }
 
-export function fetchSearch(query: string): Promise<SearchResponse> {
-  return apiGet(`${API_BASE}/search?query=${encodeURIComponent(query)}`)
+export function fetchSearch(query: string, opts?: { signal?: AbortSignal }): Promise<SearchResponse> {
+  return apiGet(`${API_BASE}/search?query=${encodeURIComponent(query)}`, opts)
 }
 
 // --- Stocks ---
 
-export function fetchStockHistory(symbol: string, start: string, end: string): Promise<StockData> {
-  return apiGet(`${API_BASE}/stocks/${symbol}/history?start=${start}&end=${end}`)
+export function fetchStockHistory(symbol: string, start: string, end: string, opts?: { signal?: AbortSignal }): Promise<StockData> {
+  return apiGet(`${API_BASE}/stocks/${symbol}/history?start=${start}&end=${end}`, opts)
 }
 
 export function fetchStockDetail(symbol: string, opts?: { signal?: AbortSignal }): Promise<StockDetail> {
@@ -153,14 +158,14 @@ export async function fetchFloorsheet(symbol: string, opts?: { signal?: AbortSig
 }
 
 export function fetchCompare(symbols: string[], opts?: { signal?: AbortSignal }): Promise<{ comparison: CompareItem[] }> {
-  return apiGet(`${API_BASE}/stocks/compare?symbols=${symbols.join(',')}`, opts)
+  return apiGet(`${API_BASE}/stocks/compare?symbols=${symbols.join(',')}`, { signal: opts?.signal, timeout: TIMEOUT.COMPARE })
 }
 
 // --- Signals ---
 
-export function fetchSignals(type?: string): Promise<SignalRow[]> {
+export function fetchSignals(type?: string, opts?: { signal?: AbortSignal }): Promise<SignalRow[]> {
   const params = type ? `?signal_type=${type}` : ''
-  return apiGet(`${API_BASE}/signals${params}`)
+  return apiGet(`${API_BASE}/signals${params}`, opts)
 }
 
 export function triggerSignalGeneration(): Promise<{ status: string }> {
@@ -225,8 +230,8 @@ export function deleteHolding(id: number): Promise<StatusResponse> {
 
 // --- IPOs ---
 
-export function fetchIpos(page: number = 1, perPage: number = 20): Promise<{ data: IpoDetail[]; meta: IpoMeta }> {
-  return apiGet(`${API_BASE}/ipos?page=${page}&per_page=${perPage}`)
+export function fetchIpos(page: number = 1, perPage: number = 20, opts?: { signal?: AbortSignal }): Promise<{ data: IpoDetail[]; meta: IpoMeta }> {
+  return apiGet(`${API_BASE}/ipos?page=${page}&per_page=${perPage}`, opts)
 }
 
 // --- Brokers ---
@@ -247,8 +252,8 @@ export function fetchMarketStatus(signal?: AbortSignal): Promise<MarketStatus> {
 
 // --- Guide ---
 
-export function fetchGuideSearch(query: string): Promise<{ entries: GuideEntry[]; llm_answer?: string }> {
-  return apiGet(`${API_BASE}/guide/search?q=${encodeURIComponent(query)}`)
+export function fetchGuideSearch(query: string, opts?: { signal?: AbortSignal }): Promise<{ entries: GuideEntry[]; llm_answer?: string }> {
+  return apiGet(`${API_BASE}/guide/search?q=${encodeURIComponent(query)}`, opts)
 }
 
 // --- Health ---

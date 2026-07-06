@@ -1,4 +1,5 @@
 import asyncio
+import time as time_module
 import pandas as pd
 import httpx
 import json
@@ -15,7 +16,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, text
+from bs4 import BeautifulSoup
 
 from config import OLLAMA_URL, OLLAMA_MODEL
 from database import init_db, async_session
@@ -34,10 +36,10 @@ from data.sharesansar_fetcher import SharesansarFetcher
 from analysis.indicators import compute_indicators, compute_signal
 from analysis.signals import generate_signals
 from analysis.backtest import run_backtest
-from search.fuzzy import fuzzy_search, parse_query, extract_symbols, set_security_cache
+from search.fuzzy import fuzzy_search, parse_query, parse_date_query, extract_symbols, set_security_cache
 from guide.knowledge_base import find_guide_entry, get_popular_entries
 from guide.broker_directory import search_brokers, get_top_brokers, _ensure_brokers as _ensure_broker_cache
-from data.fetcher_sectors import get_sectors, get_stocks_by_sector
+from data.fetcher_sectors import get_sectors, get_stocks_by_sector, get_sector_for_symbol
 from data.fetcher_ipo import load_ipos
 from data.cache import (
     data_cache_get, data_cache_set,
@@ -47,8 +49,11 @@ from data.cache import (
     persist_live_cache, load_live_cache,
 )
 
+def _strip_bold(t: str) -> str:
+    return re.sub(r'\*\*(.+?)\*\*', r'\1', re.sub(r'__(.+?)__', r'\1', t))
+
 LIVE_CACHE = {"data": [], "timestamp": None, "index_history": [], "current_index": None,
-               "current_indices": None, "index_hourly": [], "index_30s": []}
+               "current_indices": None, "index_hourly": [], "index_30s": [], "last_updated": None}
 live_cache_lock = asyncio.Lock()
 
 scheduler = MarketScheduler()
@@ -76,14 +81,14 @@ async def seed_daily_history(cache: dict):
             records = [r.to_dict() for r in result.scalars().all()]
         if not records:
             records = []
-    except Exception:
+    except Exception as e:
+        logger.warning("Daily price history query failed: %s", e)
         records = []
 
     if not records:
         try:
             html = await merolagani_fetcher.get_index_history_page()
             if html:
-                from bs4 import BeautifulSoup
                 soup = BeautifulSoup(html, 'html.parser')
                 for table in soup.find_all('table'):
                     rows = table.find_all('tr')
@@ -123,40 +128,75 @@ async def seed_daily_history(cache: dict):
         logger.info("Seeded index_history with %d daily points from DB", len(history))
 
 
-async def start_index_polling(cache: dict, ever_had_signalr: bool = False):
+def _normalize_index_name(name: str) -> str:
+    n = name.strip()
+    if n.upper() == 'NEPSE' or n.upper() == 'NEPSE INDEX':
+        return 'NEPSE'
+    if 'index' in n.lower():
+        return n
+    return f"{n} Index"
+
+
+async def start_index_polling(cache: dict):
     async def _poll():
-        nonlocal ever_had_signalr
         is_open = False
         while True:
             try:
                 status = get_market_status()
                 is_open = status.get('is_open', False)
-            except Exception:
+            except Exception as e:
+                logger.warning("Market status check failed: %s", e)
                 is_open = False
 
             try:
                 all_indices = None
+
+                # Priority 1: Merolagani SignalR (real-time)
                 if is_open:
                     try:
                         all_indices = await merolagani_fetcher.get_live_index()
-                        if all_indices:
-                            ever_had_signalr = True
                     except Exception as e:
                         logger.warning("Merolagani SignalR index poll failed: %s", e)
 
-                if not all_indices and not ever_had_signalr:
-                    yonepse_indices = await fetch_indices()
-                    if yonepse_indices:
-                        all_indices = {}
-                        for idx in yonepse_indices:
-                            name = idx.get('index', '')
-                            key = 'NEPSE' if name.upper() == 'NEPSE INDEX' else name
-                            all_indices[key] = {
-                                'name': key,
-                                'currentValue': idx.get('currentValue'),
-                                'change': idx.get('change'),
-                                'perChange': idx.get('perChange'),
-                            }
+                # Priority 2: Sharesansar live trading (HTML scrape, fresher than yonepse)
+                if not all_indices:
+                    try:
+                        ss_data = await sharesansar_fetcher.get_live_trading()
+                        ss_indices = ss_data.get('indices', []) if ss_data else []
+                        if ss_indices:
+                            all_indices = {}
+                            for idx in ss_indices:
+                                name = idx.get('name', '')
+                                key = _normalize_index_name(name)
+                                val = idx.get('value')
+                                pct = idx.get('percent_change', 0) or 0
+                                change = round(val * pct / 100, 2) if val else 0
+                                all_indices[key] = {
+                                    'name': key,
+                                    'currentValue': val,
+                                    'change': change,
+                                    'perChange': pct,
+                                }
+                    except Exception as e:
+                        logger.warning("Sharesansar index poll failed: %s", e)
+
+                # Priority 3: Yonepse static JSON (last resort)
+                if not all_indices:
+                    try:
+                        yonepse_indices = await fetch_indices()
+                        if yonepse_indices:
+                            all_indices = {}
+                            for idx in yonepse_indices:
+                                name = idx.get('index', '')
+                                key = 'NEPSE' if name.upper() == 'NEPSE INDEX' else name
+                                all_indices[key] = {
+                                    'name': key,
+                                    'currentValue': idx.get('currentValue'),
+                                    'change': idx.get('change'),
+                                    'perChange': idx.get('perChange'),
+                                }
+                    except Exception as e:
+                        logger.warning("Yonepse index poll failed: %s", e)
 
                 if all_indices:
                     now_utc = datetime.now(timezone.utc)
@@ -186,6 +226,7 @@ async def start_index_polling(cache: dict, ever_had_signalr: bool = False):
                                             now_npt.strftime('%Y-%m-%d %H:00'), nv)
 
                         cache['current_indices'] = all_indices
+                        cache['last_updated'] = _to_timestamp(now_utc)
                         n = all_indices.get('NEPSE', {})
                         cache['current_index'] = {
                             'name': 'NEPSE Index',
@@ -214,11 +255,11 @@ async def lifespan(app: FastAPI):
             if sym and sym not in seen:
                 seen.add(sym)
                 symbols.append({"symbol": sym, "name": name})
-        set_security_cache(symbols)
+        await set_security_cache(symbols)
     except Exception as e:
         logger.warning("Failed to load securities cache: %s", e)
         symbols = []
-        set_security_cache(symbols)
+        await set_security_cache(symbols)
     try:
         count = await run_daily_update()
         if count > 0:
@@ -240,10 +281,9 @@ async def lifespan(app: FastAPI):
         for k, v in disk_live.items():
             if v is not None:
                 LIVE_CACHE[k] = v
-        has_signalr = bool(LIVE_CACHE.get('current_indices'))
     scheduler.start()
     await seed_daily_history(LIVE_CACHE)
-    await start_index_polling(LIVE_CACHE, has_signalr)
+    await start_index_polling(LIVE_CACHE)
     yield
     async with live_cache_lock:
         await persist_live_cache(LIVE_CACHE)
@@ -340,8 +380,8 @@ async def get_securities(search: str = ""):
 async def search(query: str = ""):
     if not query:
         return {"results": [], "suggestions": []}
-    parsed = parse_query(query)
-    raw_suggestions = parsed.get("suggestions") or fuzzy_search(query)
+    parsed = await parse_query(query)
+    raw_suggestions = parsed.get("suggestions") or await fuzzy_search(query)
     live = await _fetch_live_all()
     live_map = {c.get("symbol", "").upper(): c for c in live}
     enriched = []
@@ -659,7 +699,8 @@ async def stock_history(symbol: str, start: str = "", end: str = ""):
         df = pd.DataFrame(records)
         indicators = compute_indicators(df)
         sig_type, confidence, reason = compute_signal(indicators)
-    except Exception:
+    except Exception as e:
+        logger.warning("Indicator computation failed for %s: %s", sym, e)
         return {"prices": records, "indicators": {}, "signal": {"type": "HOLD", "confidence": 50, "reason": "Insufficient data for technical analysis"}}
 
     return {
@@ -728,7 +769,6 @@ async def stock_detail(symbol: str):
         if sec and sec.sector and not detail.get("sector"):
             detail["sector"] = sec.sector
     if not detail.get("sector"):
-        from data.fetcher_sectors import get_sector_for_symbol
         s = get_sector_for_symbol(symbol.upper())
         if s:
             detail["sector"] = s
@@ -906,12 +946,11 @@ async def compare_stocks(symbols: str = ""):
             for r in rows.scalars().all():
                 records_by_symbol.setdefault(r.symbol, []).append(r.to_dict())
     except Exception as e:
-        logger.debug("Failed to batch query daily prices: %s", e)
+        logger.warning("Failed to batch query daily prices: %s", e)
 
     market_status = get_market_status()
 
-    result = []
-    for sym in sym_list:
+    async def _process_sym(sym: str) -> dict:
         l = live_map.get(sym, {})
         item = {
             "symbol": sym,
@@ -926,7 +965,7 @@ async def compare_stocks(symbols: str = ""):
         try:
             records = records_by_symbol.get(sym, [])
             if len(records) < 2:
-                records = await _fetch_yonepse_history(sym, 120)
+                records = await _fetch_yonepse_history(sym, 60)
             if market_status.get('is_open'):
                 today_candle = await _get_live_candle(sym)
                 if today_candle and (not records or records[-1].get("date") != date.today().isoformat()):
@@ -948,65 +987,81 @@ async def compare_stocks(symbols: str = ""):
                 item["signal_type"] = sig_type
                 item["signal_confidence"] = confidence
         except Exception as e:
-            logger.debug("Failed to compute indicators for %s: %s", sym, e)
-        result.append(item)
-    
+            logger.warning("Failed to compute indicators for %s: %s", sym, e)
+        return item
+
+    result = await asyncio.gather(*[_process_sym(sym) for sym in sym_list])
     return {"symbols": sym_list, "comparison": result}
 
 
-async def _fetch_yonepse_history(symbol: str, max_days: int = 120) -> list[dict]:
+async def _fetch_yonepse_history(symbol: str, max_days: int = 60) -> list[dict]:
     today = date.today()
     records = []
     seen_dates = set()
     sym_upper = symbol.upper()
+    deadline = time_module.monotonic() + 25.0
     async with httpx.AsyncClient(timeout=10) as client:
-        for i in range(max_days):
-            d = today - timedelta(days=i)
-            date_str = d.strftime("%Y-%m-%d")
-            url = f"https://shubhamnpk.github.io/yonepse/data/ltp/daily/{date_str}.json"
-            try:
-                resp = await client.get(url)
+        dates = [d for i in range(max_days) if (d := today - timedelta(days=i)).weekday() < 5]
+        batch_size = 10
+        for batch_start in range(0, len(dates), batch_size):
+            if time_module.monotonic() >= deadline:
+                break
+            batch = dates[batch_start:batch_start + batch_size]
+            tasks = []
+            for d in batch:
+                date_str = d.strftime("%Y-%m-%d")
+                url = f"https://shubhamnpk.github.io/yonepse/data/ltp/daily/{date_str}.json"
+                tasks.append(client.get(url))
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
+            for d, resp in zip(batch, responses):
+                if isinstance(resp, Exception):
+                    continue
                 if resp.status_code != 200:
                     continue
-                data = resp.json()
-                if isinstance(data, list):
-                    for row in data:
-                        if row.get("symbol", "").upper() == sym_upper:
-                            ds = row.get("date", date_str)
-                            if ds not in seen_dates:
-                                seen_dates.add(ds)
-                                close_val = float(row.get("close") or row.get("ltp") or row.get("closingPrice") or 0)
+                date_str = d.strftime("%Y-%m-%d")
+                try:
+                    data = resp.json()
+                except Exception:
+                    continue
+                try:
+                    if isinstance(data, list):
+                        for row in data:
+                            if row.get("symbol", "").upper() == sym_upper:
+                                ds = row.get("date", date_str)
+                                if ds not in seen_dates:
+                                    seen_dates.add(ds)
+                                    close_val = float(row.get("close") or row.get("ltp") or row.get("closingPrice") or 0)
+                                    records.append({
+                                        "symbol": sym,
+                                        "date": ds,
+                                        "open": float(row.get("open") or close_val),
+                                        "high": float(row.get("high") or close_val),
+                                        "low": float(row.get("low") or close_val),
+                                        "close": close_val,
+                                        "volume": int(row.get("volume", 0) or 0),
+                                        "turnover": float(row.get("turnover", 0) or 0),
+                                    })
+                                break
+                    elif isinstance(data, dict):
+                        series = data.get("series", {})
+                        entries = series.get(symbol, []) or series.get(sym_upper, [])
+                        if entries and len(entries) > 0:
+                            entry = entries[0]
+                            close = float(entry[1]) if len(entry) > 1 else 0
+                            if date_str not in seen_dates:
+                                seen_dates.add(date_str)
                                 records.append({
-                                    "symbol": sym,
-                                    "date": ds,
-                                    "open": float(row.get("open") or close_val),
-                                    "high": float(row.get("high") or close_val),
-                                    "low": float(row.get("low") or close_val),
-                                    "close": close_val,
-                                    "volume": int(row.get("volume", 0) or 0),
-                                    "turnover": float(row.get("turnover", 0) or 0),
+                                    "symbol": symbol,
+                                    "date": date_str,
+                                    "open": float(entry[0]) if entry else close,
+                                    "high": close,
+                                    "low": close,
+                                    "close": close,
+                                    "volume": int(entry[2]) if len(entry) > 2 else 0,
+                                    "turnover": float(entry[3]) if len(entry) > 3 else 0,
                                 })
-                            break
-                elif isinstance(data, dict):
-                    series = data.get("series", {})
-                    entries = series.get(symbol, []) or series.get(sym_upper, [])
-                    if entries and len(entries) > 0:
-                        entry = entries[0]
-                        close = float(entry[1]) if len(entry) > 1 else 0
-                        if date_str not in seen_dates:
-                            seen_dates.add(date_str)
-                            records.append({
-                                "symbol": symbol,
-                                "date": date_str,
-                                "open": float(entry[0]) if entry else close,
-                                "high": close,
-                                "low": close,
-                                "close": close,
-                                "volume": int(entry[2]) if len(entry) > 2 else 0,
-                                "turnover": float(entry[3]) if len(entry) > 3 else 0,
-                            })
-            except Exception:
-                continue
+                except Exception:
+                    continue
     records.sort(key=lambda r: r.get("date", ""))
     return records
 
@@ -1089,14 +1144,27 @@ GUIDE_SYSTEM_PROMPT = (
     "4. ALWAYS include: 'The stock market involves risk. This is not financial advice.'\n"
     "5. Cite NEPSE as data source.\n"
     "6. If you don't know something, say so honestly.\n\n"
+    "TYPOS AND FUZZY MATCHES:\n"
+    "- Symbol suggestions are handled by the backend and will appear in PROVIDED DATA notes. "
+    "Do NOT guess symbols from your own knowledge.\n"
+    "- If PROVIDED DATA contains a note about a symbol match, use that suggested symbol.\n"
+    "- ONLY ask for confirmation: 'I couldn't find that symbol. Did you mean X?'\n"
+    "- Do NOT provide any data, analysis, or information about the suggested symbol.\n"
+    "- Wait for the user to confirm before doing anything else.\n\n"
+    "CONFIRMATIONS:\n"
+    "- If the user says 'yes', 'correct', 'okay', or similar after you suggested "
+    "a symbol, respond with a brief confirmation.\n"
+    "- Example: 'Showing RIDI chart on the Trade page.'\n"
+    "- Do NOT treat 'yes' as a new question or try to find another symbol.\n\n"
     "STRICT FORMAT RULES:\n"
     "- Start data-backed responses with a one-line market snapshot (NEPSE + Sensitive index).\n"
     "- For stock data: use a single compact line per stock.\n"
-    "  Example: **NABIL** | NPR 485.20 | +2.15% | Vol: 52,341 | RSI: 32.5\n"
+    "  Example: NABIL | NPR 485.20 | +2.15% | Vol: 52,341 | RSI: 32.5\n"
     "- For technical indicators: one bullet per indicator with brief interpretation "
     "(e.g. '- RSI 32.5: oversold territory').\n"
-    "- For market overview: use **bold section headers** and short bullet lists.\n"
+    "- For market overview: use section headers and short bullet lists.\n"
     "- MAXIMUM 12 lines. No paragraph longer than 2 sentences.\n"
+    "- Do NOT use asterisks (**) or underscores (__) for formatting anywhere in your response.\n"
     "- End with the disclaimer on its own line."
 )
 
@@ -1146,11 +1214,11 @@ def detect_intent(query: str, symbols: list[str]) -> str:
     q = query.lower()
     if len(symbols) >= 2:
         return "compare"
-    if len(symbols) == 1 and any(w in q for w in ["rsi", "macd", "sma", "moving average", "bollinger", "atr", "adx", "indicator", "signal", "technical"]):
+    if len(symbols) == 1 and any(w in q for w in ["rsi", "macd", "sma", "moving average", "bollinger", "atr", "adx", "indicator", "signal", "technical", "index"]):
         return "indicator"
-    if len(symbols) == 1 and any(w in q for w in ["price", "ltp", "current", "how much", "rate", "value", "chart"]):
+    if len(symbols) == 1 and any(w in q for w in ["price", "ltp", "current", "how much", "rate", "value", "chart", "show", "display"]):
         return "price"
-    if any(w in q for w in ["market", "overview", "gainers", "losers", "indices", "summary", "top"]):
+    if any(w in q for w in ["market", "overview", "gainers", "losers", "indices", "summary", "top", "index"]):
         return "overview"
     return "guide"
 
@@ -1350,31 +1418,64 @@ async def _generate_answer(req: QuestionRequest):
 
     yield json.dumps({"type": "status", "status": "analyzing"}) + "\n"
 
-    chart_match = re.search(r'(?:show\s+)?(?:me\s+)?(?:graph|chart)\s+(?:of\s+)?([A-Za-z]{2,10})\b', question, re.IGNORECASE)
+    chart_match = re.search(
+        r'(?:(?:show|display)\s+)?(?:me\s+)?(?:the\s+)?'
+        r'(?:graph|chart|plot|candlestick|candle|candles)\s+(?:of\s+)?'
+        r'(?!.*(?:and|vs|versus))([A-Za-z]{2,10})\b',
+        question, re.IGNORECASE
+    )
+    if not chart_match:
+        chart_match = re.search(
+            r'(?!.*(?:and|vs|versus))'
+            r'([A-Za-z]{2,10})\s+(?:chart|graph|plot|candle|candlestick)\b',
+            question, re.IGNORECASE
+        )
+    candidate = None
     if chart_match:
         candidate = chart_match.group(1).strip().upper()
-        found = fuzzy_search(candidate)
+        found = await fuzzy_search(candidate)
         if found:
             symbols = [found[0]["symbol"]]
             intent = "price"
         else:
-            symbols = extract_symbols(question)
+            symbols = await extract_symbols(question)
             intent = detect_intent(question, symbols)
     else:
-        symbols = extract_symbols(question)
+        symbols = await extract_symbols(question)
         intent = detect_intent(question, symbols)
 
-    parsed = parse_query(question)
-    suggestions = parsed.get("suggestions", [])
-    match_type = suggestions[0].get("match_type") if suggestions else None
-    symbol = symbols[0] if symbols else (parsed.get("symbol") or None)
-    start_date = parsed.get("start")
-    end_date = parsed.get("end")
+    chart_intent = bool(chart_match)
+
+    date_info = parse_date_query(question)
+    start_date = date_info.get("start")
+    end_date = date_info.get("end")
+
+    symbol = symbols[0] if symbols else None
+
+    fuzzy_suggestion = None
+    symbol_match_type = None
+    raw_clean = re.sub(
+        r'\b(show|display|me|chart|graph|plot|candle|candlestick|of|the|a|an|for|in|to|'
+        r'and|vs|is|what|how|who|tell|give|list|know|my|are|can|do|does|did|has|have|'
+        r'like|need|want|would|could|should|will|get|find|see|check|compare|market|overview|'
+        r'summary|gainers|losers|top|today|index|indices|sector|sectors|signal|signals)\b',
+        '', question, flags=re.IGNORECASE
+    )
+    raw_clean = re.sub(r'[^A-Za-z ]', '', raw_clean).strip().upper()
+    words = [w for w in raw_clean.split() if len(w) > 1]
+    if words:
+        check = await fuzzy_search(words[0])
+        if check:
+            symbol_match_type = check[0].get("match_type")
+            if symbol_match_type not in ("exact",):
+                fuzzy_suggestion = check[0]
 
     suggested_page = None
     data_context = ""
 
-    if symbols:
+    skip_data = chart_intent or bool(fuzzy_suggestion) or (intent == "compare" and len(symbols) >= 2)
+
+    if symbols and not skip_data:
         ctx_key = "ctx_" + "_".join(sorted(symbols))
         cached = await data_cache_get(ctx_key)
         if cached:
@@ -1432,7 +1533,37 @@ async def _generate_answer(req: QuestionRequest):
         except Exception:
             pass
 
-    if intent == "guide" or not data_context:
+    if chart_intent and not fuzzy_suggestion and symbol:
+        system_prompt = (
+            f"You are a NEPSE chart assistant. "
+            f"When the user asks for a chart, respond with exactly one line: "
+            f"'Chart of {symbol} displayed on the Trade page.'\n"
+            f"Do not add any data, analysis, or additional text.\n"
+            f"The stock market involves risk. This is not financial advice."
+        )
+    elif chart_intent and fuzzy_suggestion:
+        system_prompt = (
+            f"You are a NEPSE chart assistant. "
+            f"The closest match is {fuzzy_suggestion['symbol']} ({fuzzy_suggestion.get('name', '')}). "
+            f"Politely ask if they meant that symbol before proceeding. "
+            f"Example: 'I couldn't find that symbol. Did you mean "
+            f"{fuzzy_suggestion['symbol']}?'\n"
+            f"Wait for the user to confirm before doing anything else.\n"
+            f"The stock market involves risk. This is not financial advice."
+        )
+    elif fuzzy_suggestion and not chart_intent:
+        data_context = ""
+        system_prompt = (
+            f"You are a NEPSE trading assistant. "
+            f"The closest match is {fuzzy_suggestion['symbol']} ({fuzzy_suggestion.get('name', '')}). "
+            f"Politely ask if they meant that symbol before proceeding. "
+            f"Example: 'I couldn't find that symbol. Did you mean "
+            f"{fuzzy_suggestion['symbol']}?'\n"
+            f"Wait for the user to confirm before doing anything else.\n"
+            f"Do NOT provide any data, analysis, or information about the suggested symbol.\n"
+            f"The stock market involves risk. This is not financial advice."
+        )
+    elif intent == "guide" or not data_context:
         system_prompt = GUIDE_SYSTEM_PROMPT
     else:
         system_prompt = GUIDE_SYSTEM_PROMPT + (
@@ -1440,20 +1571,29 @@ async def _generate_answer(req: QuestionRequest):
             "1. Prioritize the provided REAL market data below for all metrics.\n"
             "2. If a metric is not in the provided data, say it is not available — do NOT use general knowledge.\n"
             "3. Cite NEPSE as the data source.\n"
-            "4. Organize data into distinct sections with **bold headers** (e.g. **Index**, **Gainers**, **NABIL**).\n"
+            "4. Organize data into distinct sections with headers (e.g. Index, Gainers, NABIL).\n"
             "5. Use compact bullet-point format: one fact per line, no run-on paragraphs.\n"
             "6. Keep the total response under 12 lines."
         )
 
-    if data_context:
+    if data_context and not fuzzy_suggestion:
         system_prompt += (
             "\n\nPROVIDED DATA:\n" + data_context +
             "\n\nUse this data for metrics when available."
         )
 
-    yield json.dumps({"type": "meta", "suggested_page": suggested_page, "symbol": symbol,
-                       "symbol_match_type": match_type, "start_date": start_date.isoformat() if start_date else None,
-                       "end_date": end_date.isoformat() if end_date else None}) + "\n"
+    meta_symbol = symbol if chart_intent and not fuzzy_suggestion else None
+    meta_symbols = symbols if intent == "compare" and len(symbols) >= 2 else None
+    suggested_page = "compare" if intent == "compare" and len(symbols) >= 2 else None
+
+    yield json.dumps({
+        "type": "meta", "suggested_page": suggested_page,
+        "symbol": meta_symbol, "symbols": meta_symbols,
+        "symbol_match_type": symbol_match_type,
+        "fuzzy_suggestion": fuzzy_suggestion,
+        "start_date": start_date.isoformat() if start_date else None,
+        "end_date": end_date.isoformat() if end_date else None,
+    }) + "\n"
 
     yield json.dumps({"type": "status", "status": "thinking"}) + "\n"
     max_tokens = 1024
@@ -1464,9 +1604,10 @@ async def _generate_answer(req: QuestionRequest):
     try:
         async for token in _stream_llm(system_prompt, question, max_tokens, timeout_secs, req.history):
             if token:
-                answer_parts.append(token)
+                cleaned = _strip_bold(token)
+                answer_parts.append(cleaned)
                 token_count += 1
-                yield json.dumps({"type": "token", "token": token}) + "\n"
+                yield json.dumps({"type": "token", "token": cleaned}) + "\n"
     except Exception as e:
         logger.error("_generate_answer streaming failed: %s", e)
 
@@ -1494,7 +1635,6 @@ async def health():
     db_ok = False
     try:
         async with async_session() as session:
-            from sqlalchemy import text
             await session.execute(text("SELECT 1"))
             db_ok = True
     except Exception as e:

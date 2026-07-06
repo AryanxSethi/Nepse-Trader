@@ -41,6 +41,6 @@ export function useBacktest(symbol: string, fast: number, slow: number, days: nu
   return useQuery({
     queryKey: ['backtest', symbol, fast, slow, days],
     queryFn: () => fetchBacktest(symbol, fast, slow, days),
-    enabled: run,
+    enabled: run && !!symbol,
   })
 }

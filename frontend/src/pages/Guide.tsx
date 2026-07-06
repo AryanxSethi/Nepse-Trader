@@ -4,7 +4,7 @@ import QuestionInput from '../components/QuestionInput'
 import GuideAnswer from '../components/GuideAnswer'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { PageTransition } from '../components/Navbar'
-import { BookIcon, BrainIcon, CompanyIcon } from '../components/Icons'
+import { BookIcon, BrainIcon, CompanyIcon, ChartIcon, CompareIcon, WarningIcon } from '../components/Icons'
 import { fetchGuideSearch } from '../api/endpoints'
 
 const popularTopics = [
@@ -38,7 +38,7 @@ export default function Guide() {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 10000)
     try {
-      const data = await fetchGuideSearch(query)
+      const data = await fetchGuideSearch(query, { signal: controller.signal })
       if (data?.entries?.length || data?.llm_answer) {
         setCuratedAnswer({
           entry: data.entries?.[0] || null,
@@ -48,7 +48,8 @@ export default function Guide() {
         return null
       }
       return 'No guide entry found for that query.'
-    } catch {
+    } catch (err) {
+      console.warn('[Guide] search failed:', err)
       return 'Guide search unavailable. Please try again later.'
     } finally {
       clearTimeout(timeout)
@@ -117,6 +118,67 @@ export default function Guide() {
             </p>
           </div>
         )}
+
+        <div className="border-t border-border pt-6 mt-6">
+          <h2 className="text-base font-semibold text-text mb-4">Chatbox Usage Guide</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="rounded-xl bg-surface-card border border-border p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <ChartIcon size={16} className="text-accent" />
+                <span className="text-sm font-medium text-text">Chart Commands</span>
+              </div>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Ask the AI to show stock charts on the Trade page.
+              </p>
+              <div className="text-xs text-text-muted space-y-0.5">
+                <code className="text-accent">"show chart of NABIL"</code><br />
+                <code className="text-accent">"candlestick SCB"</code><br />
+                <code className="text-accent">"plot ADBL"</code>
+              </div>
+            </div>
+            <div className="rounded-xl bg-surface-card border border-border p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <CompareIcon size={16} className="text-accent" />
+                <span className="text-sm font-medium text-text">Compare Stocks</span>
+              </div>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Compare two or more companies side by side.
+              </p>
+              <div className="text-xs text-text-muted space-y-0.5">
+                <code className="text-accent">"compare NABIL and SCB"</code><br />
+                <code className="text-accent">"NABIL vs CZBIL"</code><br />
+                <code className="text-accent">"compare KBL, NABIL, SCB"</code>
+              </div>
+            </div>
+            <div className="rounded-xl bg-surface-card border border-border p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <BrainIcon size={16} className="text-accent" />
+                <span className="text-sm font-medium text-text">Stock Data</span>
+              </div>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Get real-time data, technical indicators, and market insights.
+              </p>
+              <div className="text-xs text-text-muted space-y-0.5">
+                <code className="text-accent">"what is RSI of NABIL?"</code><br />
+                <code className="text-accent">"NABIL LTP and volume"</code><br />
+                <code className="text-accent">"top gainers today"</code>
+              </div>
+            </div>
+            <div className="rounded-xl bg-surface-card border border-border p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <WarningIcon size={16} className="text-yellow" />
+                <span className="text-sm font-medium text-text">Tips</span>
+              </div>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Chart and compare features only work on the Trade page. General Q&A works everywhere.
+              </p>
+              <div className="text-xs text-text-muted space-y-0.5">
+                <span className="block">Use date ranges: <code className="text-accent">"past 6 months"</code></span>
+                <span className="block">Typo-tolerant: <code className="text-accent">"NABILl"</code> → NABIL</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </PageTransition>
   )

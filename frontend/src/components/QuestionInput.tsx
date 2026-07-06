@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useLLMAsk } from '../hooks/useLLMQuery'
+import type { ParsedResult } from '../hooks/useLLMQuery'
 import { ChatIcon, BrainIcon, CloseIcon } from './Icons'
 
 interface Message {
+  id: string
   role: 'user' | 'assistant'
   content: string
 }
@@ -11,13 +13,6 @@ interface Message {
 interface QuickQuery {
   label: string
   query: string
-}
-
-interface ParsedResult {
-  symbol?: string
-  start_date?: string
-  end_date?: string
-  symbol_match_type?: string
 }
 
 interface Props {
@@ -45,7 +40,8 @@ function sanitize(text: string): string {
 function formatResponse(text: string): string {
   const escaped = sanitize(text)
   let formatted = escaped
-  formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  formatted = formatted.replace(/\*\*(.+?)\*\*/g, '$1')
+  formatted = formatted.replace(/__(.+?)__/g, '$1')
   formatted = formatted.replace(/^### (.+)$/gm, '<div class="text-xs font-semibold text-text mt-2 mb-1">$1</div>')
   formatted = formatted.replace(/^- (.+)$/gm, '<span class="block text-text-muted">\u2022 $1</span>')
   formatted = formatted.replace(/\n{2,}/g, '<div class="h-2"></div>')
@@ -76,7 +72,7 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
         try { setMessages(JSON.parse(stored)) } catch {}
       }
       setMessages((prev) => {
-        if (prev.length === 0) return [{ role: 'assistant', content: `Selected **${symbol}**. ${welcomeRef.current}` }]
+        if (prev.length === 0) return [{ id: crypto.randomUUID(), role: 'assistant', content: `Selected **${symbol}**. ${welcomeRef.current}` }]
         return prev
       })
       initialized.current = true
@@ -93,13 +89,15 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
 
   useEffect(() => {
     if (data) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.answer }])
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: data.answer }])
       if (onParsedResultRef.current && (data.symbol || data.suggested_page)) {
         onParsedResultRef.current({
           symbol: data.symbol,
+          symbols: data.symbols,
           start_date: data.start_date,
           end_date: data.end_date,
           symbol_match_type: data.symbol_match_type,
+          suggested_page: data.suggested_page,
         })
       }
       reset()
@@ -111,6 +109,7 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
   useEffect(() => {
     if (error) {
       setMessages((prev) => [...prev, {
+        id: crypto.randomUUID(),
         role: 'assistant',
         content: 'Unable to reach the AI assistant. Ensure Ollama is running with the LLM model.',
       }])
@@ -137,7 +136,11 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
   }, [isPending, onSubmit])
 
   useEffect(() => {
-    localStorage.setItem('nepse-chat-history', JSON.stringify(messages))
+    try {
+      localStorage.setItem('nepse-chat-history', JSON.stringify(messages))
+    } catch (e) {
+      console.warn('Failed to persist chat history:', e)
+    }
   }, [messages])
 
   useEffect(() => {
@@ -149,7 +152,7 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
     if (!input.trim() || isProcessing) return
     const q = input.trim()
     setInput('')
-    setMessages((prev) => [...prev, { role: 'user', content: q }])
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: q }])
 
     if (onSubmit) {
       setCustomLoading(true)
@@ -164,10 +167,11 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
       try {
         const answer = await onSubmit(q)
         if (answer !== null) {
-          setMessages((prev) => [...prev, { role: 'assistant', content: answer }])
+          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: answer }])
         }
       } catch {
         setMessages((prev) => [...prev, {
+          id: crypto.randomUUID(),
           role: 'assistant',
           content: 'Unable to fetch answer. Please try again.',
         }])
@@ -182,7 +186,7 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
   }
 
   const handleQuickQuery = (query: string) => {
-    setMessages((prev) => [...prev, { role: 'user', content: query }])
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: query }])
     if (onSubmit) {
       setCustomLoading(true)
       setLoadingPhase(1)
@@ -195,10 +199,11 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
       }, 500)
       onSubmit(query).then((answer) => {
         if (answer !== null) {
-          setMessages((prev) => [...prev, { role: 'assistant', content: answer }])
+          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: answer }])
         }
       }).catch(() => {
         setMessages((prev) => [...prev, {
+          id: crypto.randomUUID(),
           role: 'assistant',
           content: 'Unable to fetch answer. Please try again.',
         }])
@@ -230,7 +235,7 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
   if (!showChat) {
     return (
       <button
-        onClick={() => { setShowChat(true); if (!initialized.current) { setMessages([{ role: 'assistant', content: welcomeRef.current }]); initialized.current = true } }}
+        onClick={() => { setShowChat(true); if (!initialized.current) {     setMessages([{ id: crypto.randomUUID(), role: 'assistant', content: welcomeRef.current }]); initialized.current = true } }}
         className="w-full rounded-xl bg-surface-card border border-border p-3 flex items-center gap-2 hover:bg-surface-hover transition-colors text-left"
       >
         <ChatIcon size={16} className="text-accent shrink-0" />
@@ -269,7 +274,7 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
 
           return (
             <motion.div
-              key={`msg-${i}`}
+              key={msg.id}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}

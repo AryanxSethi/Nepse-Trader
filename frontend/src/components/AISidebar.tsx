@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CompanyIcon, BrainIcon, CloseIcon } from './Icons'
+import { fetchCompanies } from '../api/endpoints'
 import { POLL } from '../config/constants'
 
 const STORAGE_KEY = 'nepse-watchlist'
@@ -26,8 +27,8 @@ interface WatchlistPrice {
 interface CompanyEntry {
   symbol: string
   name: string
-  ltp: number | null
-  percent_change: number | null
+  ltp?: number | null
+  percent_change?: number | null
 }
 
 interface Props {
@@ -42,10 +43,7 @@ export default function AISidebar({ onSelectSymbol, currentSymbol }: Props) {
   const refreshPrices = useCallback(async () => {
     if (watchlist.length === 0) return
     try {
-      const res = await fetch(`/api/companies`)
-      if (!res.ok) return
-      const json = await res.json()
-      const companies: CompanyEntry[] = json.companies || []
+      const companies: CompanyEntry[] = await fetchCompanies()
       const map = new Map<string, WatchlistPrice>()
       for (const sym of watchlist) {
         const found = companies.find((c) => c.symbol?.toUpperCase() === sym)

@@ -24,7 +24,7 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
 
   useEffect(() => {
     if (initialValue !== undefined) {
-      externalUpdate.current = true
+      selectedSymbolRef.current = initialValue
       setQuery(initialValue)
     }
   }, [initialValue])
@@ -44,7 +44,7 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
     setLoading(true)
     setError(false)
     try {
-      const data = await fetchSearch(q)
+      const data = await fetchSearch(q, { signal: controller.signal })
       if (data.symbol && !data.suggestions?.length) {
         onSearch(data.symbol, data.start, data.end)
         setQuery(data.symbol)
@@ -53,7 +53,8 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
         return
       }
       setSuggestions(data.suggestions || [])
-    } catch {
+    } catch (err) {
+      console.warn('[SearchBar] search failed:', err)
       setError(true)
       setSuggestions([])
     } finally {
@@ -63,10 +64,6 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
 
   useEffect(() => {
     if (mode === 'guide') return
-    if (externalUpdate.current) {
-      externalUpdate.current = false
-      return
-    }
     if (query === selectedSymbolRef.current) return
     clearTimeout(timer.current)
     if (query.length > 1) {

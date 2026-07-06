@@ -93,6 +93,7 @@ async function request<T>(path: string, opts?: FetchOptions): Promise<T> {
   } catch (e) {
     if (e instanceof ApiError) throw e
     if (e instanceof DOMException && e.name === 'AbortError') {
+      if (opts?.signal?.aborted) throw e
       throw new TimeoutError()
     }
     if (e instanceof TypeError) {
@@ -109,7 +110,7 @@ function anySignal(signals: AbortSignal[]): AbortSignal {
   for (const sig of signals) {
     if (sig.aborted) {
       controller.abort(sig.reason)
-      return controller.signal
+      break
     }
     sig.addEventListener('abort', () => controller.abort(sig.reason), { once: true })
   }

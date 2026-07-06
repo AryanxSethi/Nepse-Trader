@@ -5,9 +5,20 @@ export interface AskResponse {
   answer: string
   suggested_page?: string
   symbol?: string
+  symbols?: string[]
   symbol_match_type?: string
+  fuzzy_suggestion?: { symbol: string; name: string; score?: number } | null
   start_date?: string
   end_date?: string
+}
+
+export interface ParsedResult {
+  symbol?: string
+  symbols?: string[]
+  start_date?: string
+  end_date?: string
+  symbol_match_type?: string
+  suggested_page?: string
 }
 
 export interface StreamCallbacks {

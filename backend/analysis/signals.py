@@ -13,20 +13,28 @@ async def generate_signals():
 
     async with async_session() as session:
         securities = await session.execute(select(Security))
-        symbols = [(s.symbol, s.name) for s in securities.scalars()]
+        symbols = [s.symbol for s in securities.scalars()]
 
-        for sym, name in symbols:
-            rows = await session.execute(
-                select(DailyPrice)
-                .where(DailyPrice.symbol == sym, DailyPrice.date >= cutoff)
-                .order_by(DailyPrice.date)
-            )
-            records = rows.scalars().all()
+        if not symbols:
+            return
 
+        all_rows = await session.execute(
+            select(DailyPrice)
+            .where(DailyPrice.symbol.in_(symbols), DailyPrice.date >= cutoff)
+            .order_by(DailyPrice.symbol, DailyPrice.date)
+        )
+        all_records = all_rows.scalars().all()
+
+        by_symbol: dict[str, list] = {}
+        for r in all_records:
+            by_symbol.setdefault(r.symbol, []).append(r.to_dict())
+
+        for sym in symbols:
+            records = by_symbol.get(sym, [])
             if len(records) < 30:
                 continue
 
-            df = pd.DataFrame([r.to_dict() for r in records])
+            df = pd.DataFrame(records)
             indicators = compute_indicators(df)
             signal_type, confidence, reason = compute_signal(indicators)
 

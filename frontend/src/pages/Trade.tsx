@@ -16,7 +16,7 @@ import { useStockHistory } from '../hooks/useStockData'
 const MS_PER_DAY = 86400000
 import { PageTransition } from '../components/Navbar'
 import { usePageTitle } from '../hooks/usePageTitle'
-import { fetchStockDetail } from '../api/endpoints'
+import { fetchStockDetail, type StockDetail } from '../api/endpoints'
 import { CompanyIcon, WarningIcon, ChartIcon, CompareIcon, TableIcon } from '../components/Icons'
 
 function toDateStr(d: Date): string {
@@ -29,8 +29,9 @@ export default function Trade() {
   const [symbol, setSymbol] = useState(searchParams.get('symbol') || '')
   const [dateDays, setDateDays] = useState(90)
   const [activeTab, setActiveTab] = useState<'chart' | 'compare' | 'floorsheet'>('chart')
+  const [compareSymbols, setCompareSymbols] = useState<string[] | null>(null)
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
-  const [detailData, setDetailData] = useState<Record<string, string> | null>(null)
+  const [detailData, setDetailData] = useState<StockDetail | null>(null)
 
   const symbolFromParams = searchParams.get('symbol')
 
@@ -42,8 +43,13 @@ export default function Trade() {
     if (!symbol) { setDetailData(null); return }
     const controller = new AbortController()
     fetchStockDetail(symbol, { signal: controller.signal })
-      .then(data => { if (!controller.signal.aborted) setDetailData(data as any) })
-      .catch(() => { if (!controller.signal.aborted) setDetailData(null) })
+      .then(data => { if (!controller.signal.aborted) setDetailData(data) })
+      .catch((err) => {
+        if (!controller.signal.aborted) {
+          console.warn('[Trade] stock detail fetch failed:', err)
+          setDetailData(null)
+        }
+      })
     return () => controller.abort()
   }, [symbol])
 
@@ -63,6 +69,8 @@ export default function Trade() {
 
   const handleSearch = useCallback((sym: string, s?: string, e?: string) => {
     setSymbol(sym)
+    setActiveTab('chart')
+    setCompareSymbols(null)
     setSearchParams({ symbol: sym })
     if (s && e) {
       const sd = new Date(s)
@@ -71,8 +79,14 @@ export default function Trade() {
     }
   }, [setSearchParams])
 
-  const handleParsedResult = useCallback((result: { symbol?: string; start_date?: string; end_date?: string }) => {
-    if (result.symbol) {
+  const handleParsedResult = useCallback((result: {
+    symbol?: string; symbols?: string[]; start_date?: string; end_date?: string; suggested_page?: string
+  }) => {
+    if (result.suggested_page === 'compare' && result.symbols && result.symbols.length >= 2) {
+      setActiveTab('compare')
+      setCompareSymbols(result.symbols)
+    } else if (result.symbol) {
+      setActiveTab('chart')
       handleSearch(result.symbol, result.start_date, result.end_date)
     }
   }, [handleSearch])
@@ -143,7 +157,7 @@ export default function Trade() {
           <div className="lg:col-span-3 space-y-4">
             <RefreshIndicator fetchedAt={fetchedAt} />
             {activeTab === 'compare' ? (
-              <ComparePanel />
+              <ComparePanel key={compareSymbols?.join('-') ?? 'default'} initialSymbols={compareSymbols} />
             ) : activeTab === 'floorsheet' ? (
               <FloorsheetPanel symbol={symbol} />
             ) : (

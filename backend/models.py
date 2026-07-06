@@ -79,17 +79,3 @@ class PortfolioHolding(Base):
         }
 
 
-class BacktestResult(Base):
-    __tablename__ = "backtest_results"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    symbol = Column(String(20), nullable=False)
-    strategy = Column(String(100))
-    total_return = Column(Float)
-    buy_hold_return = Column(Float)
-    sharpe_ratio = Column(Float)
-    max_drawdown = Column(Float)
-    win_rate = Column(Float)
-    total_trades = Column(Integer)
-    params = Column(Text)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

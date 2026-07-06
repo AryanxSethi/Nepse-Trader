@@ -5,7 +5,6 @@ from data._http import (
     CircuitBreaker,
     FetchResult,
     retry_get_json,
-    retry_get_text,
 )
 
 logger = logging.getLogger('fetcher')

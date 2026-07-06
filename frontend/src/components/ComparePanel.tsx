@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import SearchBar from './SearchBar'
 import StockChart from './StockChart'
 import { SkeletonBlock } from './Skeleton'
@@ -34,13 +34,29 @@ function cellClass(value: number | null | string, key: string) {
   return 'text-text font-mono-nums'
 }
 
-function getValue(item: CompareItem, key: string): any {
+function getValue(item: CompareItem, key: string) {
   return (item as any)[key] ?? null
 }
 
-export default function ComparePanel() {
-  const [symbol1, setSymbol1] = useState('')
-  const [symbol2, setSymbol2] = useState('')
+const METRICS = [
+  { label: 'LTP', key: 'ltp', fmt: (v: number | null) => formatPrice(v) },
+  { label: 'Change %', key: 'percent_change', fmt: (v: number | null) => v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : '\u2014' },
+  { label: 'Volume', key: 'volume', fmt: (v: number | null) => v != null ? v.toLocaleString() : '\u2014' },
+  { label: 'Turnover', key: 'turnover', fmt: formatNum },
+  { label: 'Market Cap', key: 'market_cap', fmt: formatNum },
+  { label: 'RSI', key: 'rsi', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
+  { label: 'MACD', key: 'macd', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
+  { label: 'MACD Signal', key: 'macd_signal', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
+  { label: 'SMA20', key: 'sma20', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
+  { label: 'SMA50', key: 'sma50', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
+  { label: 'ADX', key: 'adx', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
+  { label: 'Signal', key: 'signal_type', fmt: (v: string | null) => v || '\u2014' },
+  { label: 'Confidence', key: 'signal_confidence', fmt: (v: number | null) => v != null ? `${v}%` : '\u2014' },
+]
+
+export default function ComparePanel({ initialSymbols }: { initialSymbols?: string[] | null }) {
+  const [symbol1, setSymbol1] = useState(initialSymbols?.[0] || '')
+  const [symbol2, setSymbol2] = useState(initialSymbols?.[1] || '')
   const [data, setData] = useState<CompareItem[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -57,6 +73,7 @@ export default function ComparePanel() {
     fetchCompare([symbol1, symbol2], { signal: controller.signal })
       .then((d) => {
         setData(d.comparison || [])
+        setError('')
         setLoading(false)
       })
       .catch((e) => {
@@ -70,22 +87,6 @@ export default function ComparePanel() {
       })
     return () => controller.abort()
   }, [symbol1, symbol2])
-
-  const metrics = useMemo(() => [
-    { label: 'LTP', key: 'ltp', fmt: (v: number | null) => formatPrice(v) },
-    { label: 'Change %', key: 'percent_change', fmt: (v: number | null) => v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : '\u2014' },
-    { label: 'Volume', key: 'volume', fmt: (v: number | null) => v != null ? v.toLocaleString() : '\u2014' },
-    { label: 'Turnover', key: 'turnover', fmt: formatNum },
-    { label: 'Market Cap', key: 'market_cap', fmt: formatNum },
-    { label: 'RSI', key: 'rsi', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
-    { label: 'MACD', key: 'macd', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
-    { label: 'MACD Signal', key: 'macd_signal', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
-    { label: 'SMA20', key: 'sma20', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
-    { label: 'SMA50', key: 'sma50', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
-    { label: 'ADX', key: 'adx', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
-    { label: 'Signal', key: 'signal_type', fmt: (v: string | null) => v || '\u2014' },
-    { label: 'Confidence', key: 'signal_confidence', fmt: (v: number | null) => v != null ? `${v}%` : '\u2014' },
-  ], [])
 
   return (
     <div className="space-y-4">
@@ -152,7 +153,7 @@ export default function ComparePanel() {
                 </tr>
               </thead>
               <tbody>
-                {metrics.map((m, i) => (
+                {METRICS.map((m, i) => (
                   <tr key={m.key} className={`border-b border-border/50 ${i % 2 === 0 ? 'bg-surface-card' : 'bg-surface-card/50'}`}>
                     <td className="py-2 px-3 text-text-muted">{m.label}</td>
                     <td className={`py-2 px-3 text-right ${cellClass(getValue(data[0], m.key), m.key)}`}>

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time as _t
 from datetime import datetime, timezone
 from urllib.parse import quote
 
@@ -179,7 +180,6 @@ class MerolaganiFetcher:
                             if sr.status_code == 200:
                                 return sr.json()
                         except httpx.TimeoutException:
-                            import time as _t
                             _t.sleep(1)
                             continue
                     return None

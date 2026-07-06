@@ -1,21 +1,21 @@
 import re
-import threading
+import asyncio
 from datetime import timedelta, date
 from rapidfuzz import process, fuzz
 
 
 SECURITY_CACHE = []
-security_cache_lock = threading.Lock()
+security_cache_lock = asyncio.Lock()
 
 
-def set_security_cache(securities: list[dict]):
+async def set_security_cache(securities: list[dict]):
     global SECURITY_CACHE
-    with security_cache_lock:
+    async with security_cache_lock:
         SECURITY_CACHE = securities
 
 
-def fuzzy_search(query: str, limit: int = 20) -> list[dict]:
-    with security_cache_lock:
+async def fuzzy_search(query: str, limit: int = 20) -> list[dict]:
+    async with security_cache_lock:
         cache = list(SECURITY_CACHE)
     if not cache or not query or not query.strip():
         return []
@@ -25,21 +25,30 @@ def fuzzy_search(query: str, limit: int = 20) -> list[dict]:
     if exact:
         return [{**exact[0], "match_type": "exact", "score": 1.0}]
 
-    name_matches = [s for s in cache if q in s["name"].upper()]
-    if name_matches:
-        return [{**s, "match_type": "name", "score": 0.95} for s in name_matches[:limit]]
+    prefix_matches = [s for s in cache if s["symbol"].startswith(q)]
+    if prefix_matches:
+        return [{**s, "match_type": "prefix", "score": 0.98} for s in prefix_matches[:limit]]
 
     choices = {s["symbol"]: s["symbol"] for s in cache}
-    results = process.extract(q, choices, scorer=fuzz.WRatio, limit=limit)
+    if len(q) < 5:
+        results = process.extract(q, choices, scorer=fuzz.ratio, limit=limit)
+        min_score = 60
+    else:
+        results = process.extract(q, choices, scorer=fuzz.WRatio, limit=limit)
+        min_score = 50
 
     output = []
     for match, score, _ in results:
-        if score < 50:
+        if score < min_score:
             continue
         for s in cache:
             if s["symbol"] == match:
                 output.append({**s, "match_type": "fuzzy", "score": round(score / 100, 2)})
                 break
+    if not output and len(q) >= 5:
+        name_matches = [s for s in cache if q in s["name"].upper()]
+        if name_matches:
+            return [{**s, "match_type": "name", "score": 0.95} for s in name_matches[:limit]]
     return output
 
 
@@ -82,7 +91,7 @@ def parse_date_query(text: str) -> dict:
     return {}
 
 
-def extract_symbols(text: str) -> list[str]:
+async def extract_symbols(text: str) -> list[str]:
     """Extract multiple stock symbols from a query for comparison.
     Handles: 'compare NABIL and MKJC', 'NABIL vs MKJC', 'NABIL, MKJC'
     """
@@ -95,7 +104,7 @@ def extract_symbols(text: str) -> list[str]:
             for part in parts:
                 cleaned = re.sub(r"[^a-zA-Z0-9 ]", "", part).strip()
                 if cleaned:
-                    s = fuzzy_search(cleaned)
+                    s = await fuzzy_search(cleaned)
                     if s:
                         symbols.append(s[0]["symbol"])
             if len(symbols) >= 2:
@@ -107,7 +116,7 @@ def extract_symbols(text: str) -> list[str]:
         for part in parts:
             cleaned = re.sub(r"[^a-zA-Z0-9 ]", "", part).strip()
             if cleaned:
-                s = fuzzy_search(cleaned)
+                s = await fuzzy_search(cleaned)
                 if s:
                     symbols.append(s[0]["symbol"])
         if len(symbols) >= 2:
@@ -120,14 +129,14 @@ def extract_symbols(text: str) -> list[str]:
         candidate = " ".join(words)
         if re.match(r'^[0-9 ]+$', candidate):
             return []
-        s = fuzzy_search(candidate)
+        s = await fuzzy_search(candidate)
         if s:
             return [s[0]["symbol"]]
     
     return []
 
 
-def parse_query(text: str) -> dict:
+async def parse_query(text: str) -> dict:
     result = {"symbol": None, "start": None, "end": None, "suggestions": []}
 
     date_info = parse_date_query(text)
@@ -144,7 +153,7 @@ def parse_query(text: str) -> dict:
     candidates = " ".join(words) if words else ""
 
     if candidates and len(candidates) <= 25:
-        suggestions = fuzzy_search(candidates)
+        suggestions = await fuzzy_search(candidates)
         if suggestions:
             result["symbol"] = suggestions[0]["symbol"]
             result["suggestions"] = suggestions

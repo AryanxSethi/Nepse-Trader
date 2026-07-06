@@ -117,6 +117,9 @@ async def run_daily_update():
     total = 0
     current = last_date + timedelta(days=1)
     while current < today:
+        if current.weekday() >= 5:
+            current += timedelta(days=1)
+            continue
         count = await update_daily_prices(current)
         total += count
         current += timedelta(days=1)

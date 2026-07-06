@@ -1,5 +1,6 @@
 @echo off
-cd /d D:\nepse-trader
+setlocal enabledelayedexpansion
+cd /d "%~dp0"
 
 echo NEPSE Trader - Starting services...
 echo.
@@ -54,10 +55,20 @@ start "NEPSE Frontend" cmd /c "cd /d D:\nepse-trader\frontend && npm run dev"
 
 :: 7. Wait for backend health check
 echo Waiting for backend to be ready...
+set RETRIES=0
 :wait_loop
+if !RETRIES! geq 30 (
+    echo [ERROR] Backend failed to start after 60 seconds.
+    echo Check that port 8001 is not in use and venv is functional.
+    pause
+    exit /b 1
+)
 timeout /t 2 /nobreak >nul
 backend\venv\Scripts\python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/api/health')" >nul 2>&1
-if errorlevel 1 goto wait_loop
+if errorlevel 1 (
+    set /a RETRIES+=1
+    goto wait_loop
+)
 
 :: 8. Open browser
 echo.

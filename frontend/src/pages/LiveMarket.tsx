@@ -10,7 +10,7 @@ import RefreshIndicator from '../components/RefreshIndicator'
 import { SkeletonCard, SkeletonChart } from '../components/Skeleton'
 import { TrendingUpIcon, TrendingDownIcon, SearchIcon, ChartIcon } from '../components/Icons'
 import { formatNPR, formatPercent, formatChange } from '../utils/format'
-import { fetchIndexHistory, fetchMarketLive } from '../api/endpoints'
+import { fetchIndexHistory, fetchMarketLive, type IndexSnapshot } from '../api/endpoints'
 import { POLL } from '../config/constants'
 
 interface IndexData {
@@ -49,7 +49,7 @@ export default function LiveMarket() {
   const [sortKey, setSortKey] = useState<SortKey>('turnover')
   const [sortAsc, setSortAsc] = useState(false)
 
-  const [snapshots, setSnapshots] = useState<{ time: number; values: Record<string, number> }[]>([])
+  const [snapshots, setSnapshots] = useState<IndexSnapshot[]>([])
   const chartRef = useRef<HTMLDivElement>(null)
   const chartApiRef = useRef<ReturnType<typeof createChart> | null>(null)
   const nepseSeriesRef = useRef<ReturnType<ReturnType<typeof createChart>['addSeries']> | null>(null)
@@ -63,7 +63,7 @@ export default function LiveMarket() {
     const fetchSnapshots = async () => {
       try {
         const json = await fetchIndexHistory()
-        if (json.snapshots) setSnapshots(json.snapshots as any)
+        if (json.snapshots) setSnapshots(json.snapshots)
       } catch { /* ignore */ }
     }
     fetchSnapshots()
@@ -245,17 +245,21 @@ export default function LiveMarket() {
           </div>
         )}
 
-        {snapshots.length >= 2 && (
-          <div className="rounded-xl bg-surface-card border border-border p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <ChartIcon size={16} className="text-accent" />
-              <span className="text-xs font-semibold text-text-muted">Index Overlay</span>
-              <span className="text-[10px] text-cyan ml-2">NEPSE</span>
-              <span className="text-[10px] text-amber">Sensitive</span>
-            </div>
-            <div ref={chartRef} className="w-full" />
+        <div className="rounded-xl bg-surface-card border border-border p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <ChartIcon size={16} className="text-accent" />
+            <span className="text-xs font-semibold text-text-muted">Index Overlay</span>
+            <span className="text-[10px] text-cyan ml-2">NEPSE</span>
+            <span className="text-[10px] text-amber">Sensitive</span>
           </div>
-        )}
+          {snapshots.length >= 2 ? (
+            <div ref={chartRef} className="w-full" />
+          ) : (
+            <p className="text-[11px] text-text-muted/60 py-6 text-center">
+              {marketStatus.is_open ? 'Collecting index data\u2026' : 'Index chart will update during market hours (11:00\u201315:00 NPT)'}
+            </p>
+          )}
+        </div>
 
         <div className="relative">
           <SearchIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />

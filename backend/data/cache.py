@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import os
 import time as time_module
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,7 +42,7 @@ async def _persist(name: str, data):
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, _write_json, path, data)
     except Exception as e:
-        logger.debug('cache persist %s failed: %s', name, e)
+        logger.warning('cache persist %s failed: %s', name, e)
 
 
 def _write_json(path: Path, data):
@@ -65,7 +64,7 @@ async def _load_from_disk(name: str):
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, _read_json, path)
     except Exception as e:
-        logger.debug('cache load %s failed: %s', name, e)
+        logger.warning('cache load %s failed: %s', name, e)
         return None
 
 
