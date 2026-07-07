@@ -16,6 +16,8 @@ const links = [
   { to: '/portfolio', label: 'Portfolio', icon: WalletIcon },
 ]
 
+/** Top navigation bar with route links and theme toggle. */
+/** Top navigation bar with links and theme toggle. */
 export default function Navbar() {
   const { theme, toggle } = useTheme()
 
@@ -64,6 +66,8 @@ export default function Navbar() {
   )
 }
 
+/** Framer motion page transition wrapper with fade/slide animation. */
+/** Page transition wrapper with fade/slide animation. */
 export function PageTransition({ children }: { children: React.ReactNode }) {
   return (
     <motion.div

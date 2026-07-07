@@ -105,6 +105,7 @@ function AddHoldingModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
   )
 }
 
+/** User portfolio with holdings, P&L tracking, and add/remove functionality. */
 export default function Portfolio() {
   usePageTitle('Portfolio')
   const [data, setData] = useState<PortfolioData | null>(null)

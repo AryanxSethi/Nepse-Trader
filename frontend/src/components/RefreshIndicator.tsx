@@ -16,6 +16,7 @@ function timeAgo(dateStr: string): string {
   return `${hours}h ago`
 }
 
+/** Shows when data was last updated with a stale indicator. */
 export default function RefreshIndicator({ fetchedAt, stale }: RefreshIndicatorProps) {
   const [label, setLabel] = useState('')
 

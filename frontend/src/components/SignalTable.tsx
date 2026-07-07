@@ -8,6 +8,7 @@ interface Props {
   loading?: boolean
 }
 
+/** Table displaying AI-generated trading signals with confidence bars. */
 export default function SignalTable({ signals, onSelectSymbol, loading }: Props) {
   if (loading) {
     return (

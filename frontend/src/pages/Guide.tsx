@@ -15,6 +15,7 @@ const popularTopics = [
   { label: 'All Brokers', query: 'view broker directory' },
 ]
 
+/** Market guide page with curated Q&A and AI-powered investor assistance. */
 export default function Guide() {
   usePageTitle('Market Guide')
   const [curatedAnswer, setCuratedAnswer] = useState<{

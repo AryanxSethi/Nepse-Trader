@@ -1,3 +1,5 @@
+/** Generic shimmer placeholder block for loading states. */
+/** Animated placeholder block for loading states. */
 export function SkeletonBlock({ width = '100%', height = 20, className = '' }: { width?: string | number; height?: number; className?: string }) {
   return (
     <div
@@ -7,6 +9,8 @@ export function SkeletonBlock({ width = '100%', height = 20, className = '' }: {
   )
 }
 
+/** Skeleton card with variable number of shimmer lines. */
+/** Skeleton card with multiple line placeholders. */
 export function SkeletonCard({ lines = 3 }) {
   return (
     <div className="rounded-xl bg-surface-card border border-border p-4 space-y-3">
@@ -17,6 +21,8 @@ export function SkeletonCard({ lines = 3 }) {
   )
 }
 
+/** Skeleton table placeholder with configurable rows and columns. */
+/** Skeleton table with header and rows of placeholders. */
 export function SkeletonTable({ rows = 8, cols = 5 }: { rows?: number; cols?: number }) {
   return (
     <div className="rounded-xl bg-surface-card border border-border overflow-hidden">
@@ -47,6 +53,8 @@ export function SkeletonTable({ rows = 8, cols = 5 }: { rows?: number; cols?: nu
   )
 }
 
+/** Skeleton placeholder matching CompanyInfo layout. */
+/** Skeleton for company info detail rows. */
 export function SkeletonCompanyInfo({ rows = 12 }: { rows?: number }) {
   return (
     <div className="rounded-xl bg-surface-card border border-border p-4">
@@ -63,6 +71,8 @@ export function SkeletonCompanyInfo({ rows = 12 }: { rows?: number }) {
   )
 }
 
+/** Skeleton placeholder mimicking StockChart with toolbar and bars. */
+/** Skeleton placeholder for a chart with toolbar and bars. */
 export function SkeletonChart({ height = 420 }: { height?: number }) {
   return (
     <div className="rounded-xl bg-surface-card border border-border overflow-hidden">
@@ -87,6 +97,8 @@ export function SkeletonChart({ height = 420 }: { height?: number }) {
   )
 }
 
+/** Horizontal carousel of skeleton index cards. */
+/** Skeleton for a horizontal indices carousel. */
 export function SkeletonIndicesCarousel({ count = 6 }: { count?: number }) {
   return (
     <div className="flex gap-3 overflow-hidden pb-1">

@@ -28,6 +28,7 @@ function formatTurnover(val: number | null | undefined): string {
   return val.toFixed(2)
 }
 
+/** Main market overview page with indices, summary, gainers/losers, and chart. */
 export default function Home() {
   usePageTitle('Market Overview')
   const navigate = useNavigate()

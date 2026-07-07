@@ -11,6 +11,7 @@ interface Props {
   initialValue?: string
 }
 
+/** Search bar with autocomplete suggestions for stock symbols. */
 export default function SearchBar({ onSearch, placeholder = 'Search stock...', mode = 'stock', initialValue }: Props) {
   const [query, setQuery] = useState(initialValue || '')
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([])

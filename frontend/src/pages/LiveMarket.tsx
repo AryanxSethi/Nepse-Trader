@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createChart, ColorType, LineSeries } from 'lightweight-charts'
 import { useMarketStatus } from '../hooks/useMarketStatus'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { PageTransition } from '../components/Navbar'
@@ -8,10 +7,11 @@ import FloatingChat from '../components/FloatingChat'
 import ErrorBanner from '../components/ErrorBanner'
 import RefreshIndicator from '../components/RefreshIndicator'
 import { SkeletonCard, SkeletonChart } from '../components/Skeleton'
-import { TrendingUpIcon, TrendingDownIcon, SearchIcon, ChartIcon } from '../components/Icons'
+import { TrendingUpIcon, TrendingDownIcon, SearchIcon } from '../components/Icons'
 import { formatNPR, formatPercent, formatChange } from '../utils/format'
-import { fetchIndexHistory, fetchMarketLive, type IndexSnapshot } from '../api/endpoints'
+import { fetchMarketLive } from '../api/endpoints'
 import { POLL } from '../config/constants'
+import IndexChart from '../components/IndexChart'
 
 interface IndexData {
   name: string
@@ -30,6 +30,19 @@ interface StockPrice {
 
 type SortKey = 'symbol' | 'ltp' | 'percent_change' | 'volume' | 'turnover'
 
+const INDEX_PRIORITY = ['NEPSE', 'Sensitive Index', 'Float Index']
+
+function sortIndices(indices: IndexData[]): IndexData[] {
+  return [...indices].sort((a, b) => {
+    const ai = INDEX_PRIORITY.indexOf(a.name)
+    const bi = INDEX_PRIORITY.indexOf(b.name)
+    if (ai !== -1 && bi !== -1) return ai - bi
+    if (ai !== -1) return -1
+    if (bi !== -1) return 1
+    return a.name.localeCompare(b.name)
+  })
+}
+
 function formatTurnover(val: number | null | undefined): string {
   if (val == null) return '\u2014'
   if (val >= 1e9) return `${(val / 1e9).toFixed(2)}B`
@@ -38,6 +51,7 @@ function formatTurnover(val: number | null | undefined): string {
   return val.toFixed(2)
 }
 
+/** Live market page with real-time indices, stock prices, and index chart. */
 export default function LiveMarket() {
   const navigate = useNavigate()
   const [indices, setIndices] = useState<IndexData[]>([])
@@ -49,101 +63,13 @@ export default function LiveMarket() {
   const [sortKey, setSortKey] = useState<SortKey>('turnover')
   const [sortAsc, setSortAsc] = useState(false)
 
-  const [snapshots, setSnapshots] = useState<IndexSnapshot[]>([])
-  const chartRef = useRef<HTMLDivElement>(null)
-  const chartApiRef = useRef<ReturnType<typeof createChart> | null>(null)
-  const nepseSeriesRef = useRef<ReturnType<ReturnType<typeof createChart>['addSeries']> | null>(null)
-  const sensSeriesRef = useRef<ReturnType<ReturnType<typeof createChart>['addSeries']> | null>(null)
-
   usePageTitle('Live Market')
   const marketStatus = useMarketStatus()
-
-  useEffect(() => {
-    let id: ReturnType<typeof setInterval> | null = null
-    const fetchSnapshots = async () => {
-      try {
-        const json = await fetchIndexHistory()
-        if (json.snapshots) setSnapshots(json.snapshots)
-      } catch { /* ignore */ }
-    }
-    fetchSnapshots()
-    if (marketStatus.is_open) {
-      id = setInterval(fetchSnapshots, POLL.SNAPSHOT_OPEN)
-    }
-    return () => { if (id) clearInterval(id) }
-  }, [marketStatus.is_open])
-
-  useEffect(() => {
-    if (!chartRef.current) return
-    const chart = createChart(chartRef.current, {
-      width: chartRef.current.clientWidth,
-      height: 160,
-      layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#94a3b8',
-        fontSize: 10,
-      },
-      grid: { vertLines: { visible: false }, horzLines: { visible: false } },
-      rightPriceScale: { visible: false },
-      timeScale: {
-        visible: true,
-        timeVisible: true,
-        secondsVisible: false,
-        borderVisible: false,
-        tickMarkFormatter: (time: number | string | {timestamp: number}) => {
-          if (typeof time !== 'number') return ''
-          const nptMs = time * 1000 + (5 * 3600 + 45 * 60) * 1000
-          const npt = new Date(nptMs)
-          return npt.getUTCHours().toString().padStart(2, '0') + ':' +
-                 npt.getUTCMinutes().toString().padStart(2, '0')
-        },
-      },
-      crosshair: { vertLine: { visible: false }, horzLine: { visible: false } },
-      handleScroll: false,
-      handleScale: false,
-    })
-    chartApiRef.current = chart
-    nepseSeriesRef.current = chart.addSeries(LineSeries, {
-      color: '#06b6d4',
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      crosshairMarkerVisible: false,
-    })
-    sensSeriesRef.current = chart.addSeries(LineSeries, {
-      color: '#f59e0b',
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      crosshairMarkerVisible: false,
-    })
-    const handleResize = () => {
-      if (chartRef.current && chartApiRef.current) {
-        chartApiRef.current.applyOptions({ width: chartRef.current.clientWidth })
-      }
-    }
-    window.addEventListener('resize', handleResize)
-    return () => {
-      window.removeEventListener('resize', handleResize)
-      chart.remove()
-      chartApiRef.current = null
-      nepseSeriesRef.current = null
-      sensSeriesRef.current = null
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!nepseSeriesRef.current || !sensSeriesRef.current || snapshots.length < 2) return
-    const pts = snapshots.map(s => ({ time: s.time as any, value: s.values['NEPSE'] ?? 0 }))
-    nepseSeriesRef.current.setData(pts as any)
-    const sensPts = snapshots.map(s => ({ time: s.time as any, value: s.values['Sensitive Index'] ?? 0 }))
-    sensSeriesRef.current.setData(sensPts as any)
-  }, [snapshots])
 
   const fetchData = useCallback(async () => {
     try {
       const json = await fetchMarketLive()
-      setIndices(json.indices || [])
+      setIndices(sortIndices(json.indices || []))
       setPrices(json.prices || [])
       setError(null)
       setFetchedAt(new Date().toISOString())
@@ -245,21 +171,7 @@ export default function LiveMarket() {
           </div>
         )}
 
-        <div className="rounded-xl bg-surface-card border border-border p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <ChartIcon size={16} className="text-accent" />
-            <span className="text-xs font-semibold text-text-muted">Index Overlay</span>
-            <span className="text-[10px] text-cyan ml-2">NEPSE</span>
-            <span className="text-[10px] text-amber">Sensitive</span>
-          </div>
-          {snapshots.length >= 2 ? (
-            <div ref={chartRef} className="w-full" />
-          ) : (
-            <p className="text-[11px] text-text-muted/60 py-6 text-center">
-              {marketStatus.is_open ? 'Collecting index data\u2026' : 'Index chart will update during market hours (11:00\u201315:00 NPT)'}
-            </p>
-          )}
-        </div>
+        <IndexChart />
 
         <div className="relative">
           <SearchIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />

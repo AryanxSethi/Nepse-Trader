@@ -1,3 +1,9 @@
+"""Market data scheduler — polls live prices/indices during NEPSE trading hours.
+
+Uses exponential backoff on failure and respects NEPSE holidays, weekend,
+and market hours (11:00–15:00 NPT).
+"""
+
 import asyncio
 import logging
 from datetime import datetime, date, time, timedelta, timezone
@@ -28,16 +34,18 @@ MARKET_OPEN = time(11, 0)
 MARKET_CLOSE = time(15, 0)
 PRICE_REFRESH_SEC = 300
 SUMMARY_REFRESH_SEC = 1800
-CHECK_INTERVAL_SEC = 60
+CHECK_INTERVAL_SEC = 30
 
 
 def is_market_day(today: date) -> bool:
+    """Return True if *today* is a weekday not in the NEPSE holiday list."""
     if today in NEPSE_HOLIDAYS_2026:
         return False
     return today.weekday() < 5
 
 
 def is_market_open(now: datetime) -> bool:
+    """Return True if *now* falls within NEPSE trading hours on a market day."""
     if not is_market_day(now.date()):
         return False
     market_start = datetime.combine(now.date(), MARKET_OPEN, tzinfo=NPT)
@@ -46,6 +54,7 @@ def is_market_open(now: datetime) -> bool:
 
 
 def next_market_open(from_time: datetime) -> datetime:
+    """Return the next datetime when the market opens (within 14 days)."""
     today_open = datetime.combine(from_time.date(), MARKET_OPEN, tzinfo=NPT)
     if is_market_day(from_time.date()) and from_time < today_open:
         return today_open
@@ -58,6 +67,8 @@ def next_market_open(from_time: datetime) -> datetime:
 
 
 def get_market_status(now: datetime | None = None) -> dict:
+    """Return a dict with *is_open*, *as_of*, *next_open*, and *next_close*."""
+
     if now is None:
         now = datetime.now(NPT)
     is_open = is_market_open(now)
@@ -74,6 +85,10 @@ def get_market_status(now: datetime | None = None) -> dict:
 
 
 async def refresh_all(force_status: bool = False):
+    """Fetch live prices, summary, top stocks, and indices concurrently.
+
+    Returns the count of successful fetches (0–4).
+    """
     results = await asyncio.gather(
         fetch_live_prices(),
         fetch_market_summary(),
@@ -90,7 +105,9 @@ async def refresh_all(force_status: bool = False):
 
 
 class MarketScheduler:
+    """Background task that polls market data during trading hours."""
     def __init__(self):
+        """Initialise scheduler state with no active task."""
         self._task: asyncio.Task | None = None
         self._last_price_refresh: datetime | None = None
         self._last_summary_refresh: datetime | None = None
@@ -103,6 +120,7 @@ class MarketScheduler:
         }
 
     def start(self):
+        """Create and schedule the background polling task."""
         if self._task is None or self._task.done():
             try:
                 loop = asyncio.get_running_loop()
@@ -112,6 +130,7 @@ class MarketScheduler:
             self._task = loop.create_task(self._run())
 
     async def stop(self):
+        """Cancel the background polling task and wait for it to finish."""
         if self._task and not self._task.done():
             self._task.cancel()
             try:
@@ -120,18 +139,29 @@ class MarketScheduler:
                 pass
 
     def get_backoff_seconds(self) -> int:
+        """Return the backoff interval based on consecutive failures.
+
+        Returns:
+            Seconds to wait before the next poll attempt.
+        """
         if self._consecutive_failures == 0:
             return CHECK_INTERVAL_SEC
         backoff_seconds = 60 * (2 ** min(self._consecutive_failures - 1, 4))
         return min(backoff_seconds, 600)
 
     def get_last_good_timestamps(self) -> dict:
+        """Return ISO-format timestamps of the last successful data fetches.
+
+        Returns:
+            Dict mapping data source names to ISO timestamps or None.
+        """
         return {
             k: v.isoformat() if v else None
             for k, v in self._last_good_timestamps.items()
         }
 
     async def _run(self):
+        """Main scheduler loop — polls market data during trading hours."""
         logger.info("Market scheduler started")
         while True:
             try:

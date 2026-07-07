@@ -13,6 +13,7 @@ interface Props {
   loading?: boolean
 }
 
+/** Line chart comparing strategy equity curve against buy-and-hold. */
 export default function EquityCurve({ data, strategyReturn, buyHoldReturn, loading }: Props) {
   if (loading) {
     return <div className="animate-shimmer rounded-xl h-64 bg-surface-card" />

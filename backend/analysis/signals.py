@@ -1,3 +1,9 @@
+"""Daily signal generation for all tracked securities.
+
+Fetches 180 days of price data, computes indicators, and persists new
+BUY/SELL/HOLD signals that differ from the latest stored signal.
+"""
+
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, desc
 from database import async_session
@@ -7,6 +13,10 @@ import pandas as pd
 
 
 async def generate_signals():
+    """Generate signals for all securities with 30+ price records.
+
+    Skips if today's signal matches the latest stored signal for a symbol.
+    """
     now = datetime.now(timezone.utc)
     today = now.date()
     cutoff = today - timedelta(days=180)

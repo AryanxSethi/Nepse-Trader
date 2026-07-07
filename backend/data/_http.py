@@ -1,3 +1,9 @@
+"""HTTP utilities for retryable GET requests and circuit breaker.
+
+Provides *retry_get*, *retry_get_json*, *retry_get_text* with exponential
+backoff, and a per-source *CircuitBreaker*.
+"""
+
 import asyncio
 import logging
 from dataclasses import dataclass, field
@@ -16,6 +22,7 @@ MAX_DELAY = 8.0
 
 @dataclass
 class FetchResult:
+    """Result of a fetch operation with status, data, and metadata."""
     ok: bool
     data: Any = None
     source: str = ''
@@ -25,6 +32,7 @@ class FetchResult:
 
 
 def _build_error(source: str, exc: Exception) -> FetchResult:
+    """Return a failed FetchResult and log the error."""
     msg = f'{type(exc).__name__}: {exc}'
     logger.warning('[%s] %s', source, msg)
     return FetchResult(ok=False, source=source, error=msg)
@@ -124,16 +132,24 @@ class CircuitBreaker:
     """Per-source circuit breaker: after N consecutive failures, skip for cooloff seconds."""
 
     def __init__(self, threshold: int = 3, cooloff: float = 60.0):
+        """Initialise the circuit breaker.
+
+        Args:
+            threshold: Consecutive failures before opening the circuit.
+            cooloff: Seconds to stay open before allowing requests again.
+        """
         self._threshold = threshold
         self._cooloff = cooloff
         self._failures: dict[str, int] = {}
         self._open_until: dict[str, float] = {}
 
     def record_success(self, source: str):
+        """Reset failure count and close circuit for *source*."""
         self._failures.pop(source, None)
         self._open_until.pop(source, None)
 
     def record_failure(self, source: str):
+        """Increment failure count; open circuit if threshold reached."""
         self._failures[source] = self._failures.get(source, 0) + 1
         if self._failures[source] >= self._threshold:
             until = asyncio.get_running_loop().time() + self._cooloff
@@ -141,6 +157,7 @@ class CircuitBreaker:
             logger.warning('[%s] circuit opened for %.0fs', source, self._cooloff)
 
     def is_open(self, source: str) -> bool:
+        """Check whether the circuit is currently open for *source*."""
         until = self._open_until.get(source)
         if until is None:
             return False
@@ -152,6 +169,7 @@ class CircuitBreaker:
         return True
 
     def status(self, source: str) -> str:
+        """Return human-readable circuit breaker status for *source*."""
         if self.is_open(source):
             remaining = self._open_until.get(source, 0) - asyncio.get_running_loop().time()
             return f'open ({remaining:.0f}s remaining)'

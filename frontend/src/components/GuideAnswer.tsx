@@ -6,6 +6,7 @@ interface Props {
   entry: GuideEntry | null
 }
 
+/** Displays a matched guide entry with content and sources. */
 export default function GuideAnswer({ entry }: Props) {
   if (!entry) {
     return (

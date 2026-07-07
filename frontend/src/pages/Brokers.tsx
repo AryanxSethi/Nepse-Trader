@@ -27,6 +27,7 @@ function formatTurnover(n: number): string {
   return n.toLocaleString()
 }
 
+/** Broker directory page with turnover rankings, search, and TMS links. */
 export default function Brokers() {
   usePageTitle('Brokers')
   const [brokers, setBrokers] = useState<BrokerData[]>([])

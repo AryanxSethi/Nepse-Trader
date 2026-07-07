@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { PageTransition } from '../components/Navbar'
 import { ChartIcon } from '../components/Icons'
 
+/** 404 fallback page displayed for unmatched routes. */
 export default function NotFound() {
   return (
     <PageTransition>

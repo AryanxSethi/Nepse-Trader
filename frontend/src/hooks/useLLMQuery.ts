@@ -29,6 +29,7 @@ export interface StreamCallbacks {
   onStatus?: (status: string) => void
 }
 
+/** Stream LLM answer tokens with real-time callbacks. */
 export function useLLMStream() {
   const [isPending, setIsPending] = useState(false)
   const [error, setError] = useState<Error | null>(null)
@@ -178,6 +179,7 @@ async function collectAnswer(question: string): Promise<AskResponse> {
   return { answer, ...meta }
 }
 
+/** Ask a question and get the full response via mutation. */
 export function useLLMAsk() {
   return useMutation<AskResponse, Error, string>({
     mutationFn: collectAnswer,

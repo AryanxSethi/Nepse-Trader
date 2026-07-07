@@ -1,9 +1,16 @@
+"""Technical indicator computation using pandas_ta.
+
+Provides RSI, MACD, Bollinger Bands, ATR, ADX, moving averages, and
+trend / volume analysis from a OHLCV DataFrame.
+"""
+
 import math
 import pandas as pd
 import pandas_ta as ta
 
 
 def _clean(val):
+    """Return None for None, NaN or inf; pass through otherwise."""
     if val is None:
         return None
     if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
@@ -12,6 +19,11 @@ def _clean(val):
 
 
 def compute_indicators(df: pd.DataFrame) -> dict:
+    """Compute technical indicators from an OHLCV DataFrame.
+
+    Returns a dict of current values for RSI, MACD, Bollinger Bands, ATR, ADX,
+    EMA12/26, SMA20/50, trend direction, and volume averages.
+    """
     if df.empty:
         return {}
 
@@ -63,6 +75,11 @@ def compute_indicators(df: pd.DataFrame) -> dict:
 
 
 def compute_signal(indicators: dict) -> tuple:
+    """Generate a trading signal (BUY/SELL/HOLD) from indicator values.
+
+    Returns ``(signal_type, confidence, reason)`` where *confidence* is 0–95
+    and *reason* describes contributing factors.
+    """
     score = 0
     reasons = []
 

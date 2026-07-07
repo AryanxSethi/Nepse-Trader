@@ -2,6 +2,7 @@ const API_BASE = ''
 
 const DEFAULT_TIMEOUT = 30000
 
+/** Error returned by the API on non-2xx responses. */
 export class ApiError extends Error {
   status?: number
   response?: Response
@@ -18,6 +19,7 @@ export class ApiError extends Error {
   }
 }
 
+/** Error for network-level failures (e.g. no connection). */
 export class NetworkError extends ApiError {
   constructor(message: string) {
     super(message)
@@ -25,6 +27,7 @@ export class NetworkError extends ApiError {
   }
 }
 
+/** Error thrown when a request exceeds the timeout. */
 export class TimeoutError extends ApiError {
   constructor() {
     super('Request timed out')
@@ -39,18 +42,22 @@ interface FetchOptions {
   body?: unknown
 }
 
+/** Perform a GET request. */
 export async function apiGet<T>(path: string, opts?: FetchOptions): Promise<T> {
   return request<T>(path, { ...opts, method: 'GET' })
 }
 
+/** Perform a POST request. */
 export async function apiPost<T>(path: string, body?: unknown, opts?: FetchOptions): Promise<T> {
   return request<T>(path, { ...opts, method: 'POST', body })
 }
 
+/** Perform a DELETE request. */
 export async function apiDelete<T>(path: string, opts?: FetchOptions): Promise<T> {
   return request<T>(path, { ...opts, method: 'DELETE' })
 }
 
+/** Perform a PUT request. */
 export async function apiPut<T>(path: string, body?: unknown, opts?: FetchOptions): Promise<T> {
   return request<T>(path, { ...opts, method: 'PUT', body })
 }

@@ -1,20 +1,36 @@
+"""Fuzzy symbol search over the securities list using RapidFuzz.
+
+Scoring strategy
+----------------
+* Exact match → score 1.0
+* Symbol prefix match → score 0.98
+* Fuzzy WRatio (len(query) >= 5) or ratio (len(query) < 5) → score 0.50–0.97
+* Name substring (len(query) >= 5) → score 0.30
+"""
+
 import re
 import asyncio
 from datetime import timedelta, date
 from rapidfuzz import process, fuzz
 
 
-SECURITY_CACHE = []
+SECURITY_CACHE: list[dict] = []
 security_cache_lock = asyncio.Lock()
 
 
 async def set_security_cache(securities: list[dict]):
+    """Replace the in-memory security cache with a fresh list."""
     global SECURITY_CACHE
     async with security_cache_lock:
         SECURITY_CACHE = securities
 
 
 async def fuzzy_search(query: str, limit: int = 20) -> list[dict]:
+    """Search securities by symbol (exact → prefix → fuzzy) or by name substring.
+
+    Returns up to *limit* results sorted by relevance, each with *symbol*,
+    *name*, *match_type*, and *score* (0–1.0).
+    """
     async with security_cache_lock:
         cache = list(SECURITY_CACHE)
     if not cache or not query or not query.strip():
@@ -53,6 +69,11 @@ async def fuzzy_search(query: str, limit: int = 20) -> list[dict]:
 
 
 def parse_date_query(text: str) -> dict:
+    """Extract a date range from a natural-language query string.
+
+    Handles patterns like "past 30 days", "last 2 months", "1y", "ytd", "max".
+    Returns ``{"start": date | None, "end": date | None}``.
+    """
     text = text.strip().lower()
     today = date.today()
 
@@ -137,6 +158,11 @@ async def extract_symbols(text: str) -> list[str]:
 
 
 async def parse_query(text: str) -> dict:
+    """Parse a natural-language query into a symbol, date range, and suggestions.
+
+    Returns ``{"symbol": str | None, "start": date, "end": date, "suggestions": list}``.
+    Falls back to a 30-day window when no date is extracted.
+    """
     result = {"symbol": None, "start": None, "end": None, "suggestions": []}
 
     date_info = parse_date_query(text)

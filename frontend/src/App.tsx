@@ -52,6 +52,7 @@ function AnimatedRoutes() {
   )
 }
 
+/** Root application component with routing, theming, and query provider setup. */
 export default function App() {
   return (
     <ThemeProvider>

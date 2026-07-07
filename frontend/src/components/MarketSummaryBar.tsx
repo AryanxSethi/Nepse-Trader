@@ -18,6 +18,7 @@ interface Props {
   lastUpdated?: string
 }
 
+/** Displays key market summary metrics (turnover, trades, scrips, market cap). */
 export default function MarketSummaryBar({ summary, lastUpdated }: Props) {
   const items = [
     { label: 'Turnover', value: formatNum(summary.turnover) },

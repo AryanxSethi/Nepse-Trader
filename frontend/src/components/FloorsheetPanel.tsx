@@ -16,6 +16,7 @@ interface Props {
   symbol: string
 }
 
+/** Expandable table showing recent floorsheet transactions for a stock. */
 export default function FloorsheetPanel({ symbol }: Props) {
   const [open, setOpen] = useState(false)
   const [rows, setRows] = useState<FloorsheetRow[]>([])

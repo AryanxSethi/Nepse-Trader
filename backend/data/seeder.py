@@ -1,3 +1,5 @@
+"""Database seeder — populates securities and historical prices from yonepse."""
+
 import asyncio
 import httpx
 from datetime import datetime
@@ -9,6 +11,10 @@ from data.fetcher import fetch_all_securities
 
 
 async def seed_securities():
+    """Insert all securities from the upstream API into the Security table.
+
+    Skips if securities already exist.
+    """
     async with async_session() as session:
         existing = await session.execute(select(Security))
         if existing.scalars().first():
@@ -28,6 +34,10 @@ async def seed_securities():
 
 
 async def backfill_prices():
+    """Backfill up to 1 year of historical prices from nepseman API for all symbols.
+
+    Skips if any DailyPrice rows already exist.
+    """
     async with async_session() as s:
         existing = await s.execute(select(DailyPrice).limit(1))
         if existing.scalars().first():
@@ -80,6 +90,7 @@ async def backfill_prices():
 
 
 async def seed():
+    """Run full seed: init DB, seed securities, backfill prices."""
     await init_db()
     print("Seeding securities...")
     await seed_securities()

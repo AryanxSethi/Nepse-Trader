@@ -19,6 +19,14 @@ from sqlalchemy import select
 
 
 async def fetch_csv(symbol: str) -> list[dict] | None:
+    """Fetch CSV data for a given symbol from the nepse-data GitHub repo.
+
+    Args:
+        symbol: The stock symbol to fetch data for.
+
+    Returns:
+        A list of parsed row dicts sorted by date, or None on failure.
+    """
     url = f"{GITHUB_NEPSE_DATA}/{symbol}.csv"
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -59,6 +67,14 @@ async def fetch_csv(symbol: str) -> list[dict] | None:
 
 
 def _float(val: str | None) -> float | None:
+    """Safely convert a string value to float.
+
+    Args:
+        val: The string to convert, or None.
+
+    Returns:
+        The float value, or None if conversion fails.
+    """
     if val is None:
         return None
     try:
@@ -68,6 +84,14 @@ def _float(val: str | None) -> float | None:
 
 
 def _int_or_none(val: str | None) -> int | None:
+    """Safely convert a string value to int.
+
+    Args:
+        val: The string to convert, or None.
+
+    Returns:
+        The int value, or None if conversion fails.
+    """
     if val is None:
         return None
     try:
@@ -77,6 +101,14 @@ def _int_or_none(val: str | None) -> int | None:
 
 
 async def import_symbol(symbol: str) -> int:
+    """Import CSV data for a single symbol into the database.
+
+    Args:
+        symbol: The stock symbol to import.
+
+    Returns:
+        The number of new rows inserted.
+    """
     symbol = symbol.upper().strip()
     rows = await fetch_csv(symbol)
     if not rows:
@@ -102,6 +134,7 @@ async def import_symbol(symbol: str) -> int:
 
 
 async def import_all_symbols():
+    """Import CSV data for all symbols in the database."""
     await init_db()
     async with async_session() as session:
         result = await session.execute(select(Security.symbol))
@@ -116,6 +149,7 @@ async def import_all_symbols():
 
 
 async def main():
+    """Parse CLI args and trigger import for specified symbols or --all."""
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     if "--all" in sys.argv or "-a" in sys.argv:
         await import_all_symbols()

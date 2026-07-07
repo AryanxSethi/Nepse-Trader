@@ -1,3 +1,9 @@
+"""Guide entries for NEPSE investing knowledge base.
+
+Each entry has *id*, *keywords*, *title*, *content* steps, and *sources*
+with name/URL pairs. Used by the chat backend to answer user questions.
+"""
+
 GUIDE_ENTRIES = [
     {
         "id": "start-trading",
@@ -246,6 +252,8 @@ GUIDE_ENTRIES = [
 
 
 def find_guide_entry(query: str) -> dict | None:
+    """Find the best-matching guide entry for a user query using keyword scoring."""
+
     query_lower = query.lower().strip()
 
     best = None
@@ -268,6 +276,8 @@ def find_guide_entry(query: str) -> dict | None:
 
 
 def get_popular_entries() -> list[dict]:
+    """Return the first five guide entries as id/title pairs."""
+
     return [
         {"id": e["id"], "title": e["title"]}
         for e in GUIDE_ENTRIES[:5]

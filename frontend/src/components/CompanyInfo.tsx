@@ -42,6 +42,7 @@ function InfoRow({ label, value, className }: { label: string; value: string | u
   )
 }
 
+/** Displays detailed company fundamentals, price stats, and pivot levels. */
 export default function CompanyInfo({ symbol }: Props) {
   const [detail, setDetail] = useState<CompanyDetail | null>(null)
   const [loading, setLoading] = useState(false)

@@ -3,6 +3,7 @@ import { useMarketStatus } from './useMarketStatus'
 import { fetchMarketOverview, fetchStockHistory, fetchSignals, fetchBacktest } from '../api/endpoints'
 import { POLL } from '../config/constants'
 
+/** Fetch and cache market overview data with auto-refresh. */
 export function useMarketOverview() {
   const { is_open } = useMarketStatus()
   const interval = is_open ? POLL.MARKET_OVERVIEW_OPEN : false
@@ -14,6 +15,7 @@ export function useMarketOverview() {
   })
 }
 
+/** Fetch and cache stock history with auto-refresh. */
 export function useStockHistory(symbol: string, start: string, end: string) {
   const { is_open } = useMarketStatus()
   const interval = is_open ? POLL.STOCK_HISTORY_OPEN : false
@@ -26,6 +28,7 @@ export function useStockHistory(symbol: string, start: string, end: string) {
   })
 }
 
+/** Fetch and cache trading signals with auto-refresh. */
 export function useSignals(type?: string) {
   const { is_open } = useMarketStatus()
   const interval = is_open ? POLL.SIGNALS_OPEN : false
@@ -37,6 +40,7 @@ export function useSignals(type?: string) {
   })
 }
 
+/** Fetch and cache backtest results for a symbol. */
 export function useBacktest(symbol: string, fast: number, slow: number, days: number, run: boolean) {
   return useQuery({
     queryKey: ['backtest', symbol, fast, slow, days],

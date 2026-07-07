@@ -1,3 +1,5 @@
+"""IPO data loader — tries nepalipaisa API, falls back to static ipos.json."""
+
 import json
 import logging
 from datetime import datetime, timezone
@@ -11,6 +13,7 @@ IPO_JSON_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "ipos.j
 
 
 def _load_static(page: int, per_page: int) -> dict:
+    """Load IPO data from the static ipos.json file with pagination."""
     if not IPO_JSON_PATH.exists():
         return {'data': [], 'pager': {'pageNo': 1, 'itemsPerPage': per_page, 'totalNextPages': -1, 'totalPages': 1}, '_meta': {'source': 'static', 'updated_at': ''}}
     try:
@@ -50,6 +53,7 @@ def _load_static(page: int, per_page: int) -> dict:
 
 
 async def load_ipos(page: int = 1, per_page: int = 20) -> dict:
+    """Load IPOs — try nepalipaisa first, fall back to static JSON on failure."""
     result = await fetch_ipos_from_nepalipaisa(page=page, per_page=per_page)
     if result and result.get('data'):
         return result

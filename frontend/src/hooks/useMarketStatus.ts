@@ -39,6 +39,7 @@ function computeLocalStatus(): MarketStatus {
   }
 }
 
+/** Compute and poll market open/close status. */
 export function useMarketStatus() {
   const [status, setStatus] = useState<MarketStatus>(computeLocalStatus)
   const retryRef = useRef(0)

@@ -30,6 +30,7 @@ const headerIconMap = {
   active: ChartIcon,
 }
 
+/** Displays top gainers, losers, or most active stocks in a card. */
 export default function WinnerLoserCard({ title, items, type, onSelect, loading }: Props) {
   if (loading) {
     return (

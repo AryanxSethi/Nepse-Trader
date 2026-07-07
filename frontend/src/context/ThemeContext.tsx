@@ -9,6 +9,7 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType>({ theme: 'dark', toggle: () => {} })
 
+/** Theme provider that manages dark/light mode with localStorage persistence. */
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('nepse-theme')
@@ -30,4 +31,5 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   )
 }
 
+/** Hook to access current theme and toggle function. */
 export const useTheme = () => useContext(ThemeContext)

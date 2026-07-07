@@ -1,3 +1,8 @@
+"""Nepalipaisa IPO data fetcher.
+
+Fetches IPO listings from nepalipaisa.com API and normalises status values.
+"""
+
 import logging
 from datetime import datetime, timezone
 
@@ -15,10 +20,15 @@ STATUS_MAP = {
 
 
 def _normalize_status(raw: str) -> str:
+    """Map raw API status string to a canonical status value."""
     return STATUS_MAP.get(raw.lower(), 'upcoming')
 
 
 async def fetch_ipos_from_nepalipaisa(page: int = 1, per_page: int = 20) -> dict | None:
+    """Fetch IPO listings from nepalipaisa API, paginated.
+
+    Returns a dict with *data*, *pager*, and *_meta*, or None on failure.
+    """
     result = await retry_get_json(
         f'{NEPALIPAISA_BASE}/api/GetIpos',
         source='nepalipaisa/ipo',

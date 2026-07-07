@@ -1,3 +1,13 @@
+"""In-memory and disk-persistent caching layers for market, IPO, and live data.
+
+* **TTLCache** — short-lived in-memory caches for market overview (30 s),
+  IPO data (60 s), and general data (30 s / 100 entries).
+* **Disk persistence** —  all caches are persisted to JSON files under
+  ``<data-dir>/cache/`` on shutdown and reloaded on startup.
+* **Live cache** —  a shared mutable dict (``LIVE_CACHE``) with async lock
+  for real-time index snapshots.
+"""
+
 import asyncio
 import json
 import logging
@@ -27,14 +37,22 @@ _disk_lock = asyncio.Lock()
 
 
 def _ensure_cache_dir():
+    """Create the cache directory if it does not exist."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _cache_path(name: str) -> Path:
+    """Return the full path for a named cache JSON file."""
     return CACHE_DIR / f"{name}.json"
 
 
 async def _persist(name: str, data):
+    """Persist *data* to a named cache file on disk.
+
+    Args:
+        name: Cache file name (without extension).
+        data: JSON-serialisable object to write.
+    """
     _ensure_cache_dir()
     path = _cache_path(name)
     try:
@@ -46,16 +64,26 @@ async def _persist(name: str, data):
 
 
 def _write_json(path: Path, data):
+    """Write JSON-serialisable *data* to *path*."""
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, default=str)
 
 
 def _read_json(path: Path):
+    """Read and return JSON data from *path*."""
     with open(path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
 
 async def _load_from_disk(name: str):
+    """Load cached data from a named disk file.
+
+    Args:
+        name: Cache file name (without extension).
+
+    Returns:
+        Parsed JSON data, or None if the file is missing or corrupt.
+    """
     path = _cache_path(name)
     if not path.exists():
         return None
@@ -69,6 +97,12 @@ async def _load_from_disk(name: str):
 
 
 async def get_market_cache():
+    """Get cached market overview data.
+
+    Returns:
+        A tuple of (data_list, timestamp_string). Falls back to disk if
+        the in-memory cache is empty.
+    """
     async with _market_cache_lock:
         data = _market_cache.get('data')
         ts = _market_cache.get('timestamp')
@@ -82,6 +116,12 @@ async def get_market_cache():
 
 
 async def set_market_cache(data, timestamp: str | None = None):
+    """Set market cache and persist to disk.
+
+    Args:
+        data: Market data to cache.
+        timestamp: Optional ISO-format timestamp; defaults to now.
+    """
     ts = timestamp or datetime.now(timezone.utc).isoformat()
     async with _market_cache_lock:
         _market_cache['data'] = data
@@ -90,6 +130,11 @@ async def set_market_cache(data, timestamp: str | None = None):
 
 
 async def get_ipo_cache():
+    """Get cached IPO data.
+
+    Returns:
+        A tuple of (data_list, timestamp_string).
+    """
     async with _ipo_cache_lock:
         data = _ipo_cache.get('data')
         ts = _ipo_cache.get('timestamp')
@@ -97,6 +142,12 @@ async def get_ipo_cache():
 
 
 async def set_ipo_cache(data, timestamp: str | None = None):
+    """Set IPO cache and persist to disk.
+
+    Args:
+        data: IPO data to cache.
+        timestamp: Optional ISO-format timestamp; defaults to now.
+    """
     ts = timestamp or datetime.now(timezone.utc).isoformat()
     async with _ipo_cache_lock:
         _ipo_cache['data'] = data
@@ -105,6 +156,14 @@ async def set_ipo_cache(data, timestamp: str | None = None):
 
 
 async def data_cache_get(key: str) -> str | None:
+    """Get a value from the general-purpose data cache.
+
+    Args:
+        key: Cache key.
+
+    Returns:
+        Cached string value, or None if missing or expired.
+    """
     async with _data_cache_lock:
         val = _data_cache.get(key)
         if val is not None:
@@ -115,24 +174,41 @@ async def data_cache_get(key: str) -> str | None:
 
 
 async def data_cache_set(key: str, val: str) -> None:
+    """Set a value in the general-purpose data cache.
+
+    Args:
+        key: Cache key.
+        val: Value to cache.
+    """
     async with _data_cache_lock:
         _data_cache[key] = (val, time_module.time())
 
 
-LIVE_CACHE_KEYS = ['current_indices', 'current_index', 'index_30s', 'index_hourly', 'index_history']
+LIVE_CACHE_KEYS = ['current_indices', 'current_index', 'index_30s', 'index_hourly', 'index_history', 'last_updated']
 
 
 async def persist_live_cache(live_cache: dict):
+    """Persist relevant keys from *live_cache* to disk.
+
+    Args:
+        live_cache: Dict containing live market data.
+    """
     data = {k: live_cache.get(k) for k in LIVE_CACHE_KEYS if k in live_cache}
     await _persist('live_cache', data)
 
 
 async def load_live_cache() -> dict:
+    """Load cached live market data from disk.
+
+    Returns:
+        Dict of cached live data, or empty dict if unavailable.
+    """
     data = await _load_from_disk('live_cache')
     return data or {}
 
 
 async def prewarm_caches():
+    """Load market and IPO caches from disk into memory on startup."""
     _ensure_cache_dir()
     for name in ('market', 'ipo'):
         disk = await _load_from_disk(name)
@@ -150,6 +226,7 @@ async def prewarm_caches():
 
 
 async def persist_caches_on_exit():
+    """Persist market and IPO caches to disk before shutdown."""
     async with _market_cache_lock:
         market_data = _market_cache.get('data', [])
         market_ts = _market_cache.get('timestamp')

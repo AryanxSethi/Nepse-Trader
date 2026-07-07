@@ -23,6 +23,7 @@ function toDateStr(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
+/** Stock analysis page with charts, comparison, floorsheet, and AI suggestions. */
 export default function Trade() {
   usePageTitle('Stock Analysis')
   const [searchParams, setSearchParams] = useSearchParams()

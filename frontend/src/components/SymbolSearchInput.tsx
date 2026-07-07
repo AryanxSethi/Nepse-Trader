@@ -10,6 +10,7 @@ interface Props {
   placeholder?: string
 }
 
+/** Search input with autocomplete suggestions for stock symbols. */
 export default function SymbolSearchInput({ onSelect, value = '', placeholder = 'Search stock...' }: Props) {
   const [query, setQuery] = useState(value)
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([])

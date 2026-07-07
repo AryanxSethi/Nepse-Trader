@@ -6,6 +6,7 @@ interface ErrorBannerProps {
   onDismiss?: () => void
 }
 
+/** Dismissible error banner with optional retry action. */
 export default function ErrorBanner({ message, onRetry, onDismiss }: ErrorBannerProps) {
   return (
     <div className="flex items-start gap-3 rounded-xl border border-red/30 bg-red/5 p-4" role="alert">

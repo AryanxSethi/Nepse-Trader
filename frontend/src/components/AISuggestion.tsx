@@ -7,6 +7,7 @@ interface Props {
   indicators?: Record<string, number | string>
 }
 
+/** Collapsible panel showing AI-generated trading signals and indicator values. */
 export default function AISuggestion({ signal, indicators }: Props) {
   const [open, setOpen] = useState(false)
 

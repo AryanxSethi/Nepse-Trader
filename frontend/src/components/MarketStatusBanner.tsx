@@ -21,6 +21,7 @@ function formatNPDate(iso: string): string {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Kathmandu' })
 }
 
+/** Displays market open/close status banner. */
 export default function MarketStatusBanner() {
   const status = useMarketStatus()
 

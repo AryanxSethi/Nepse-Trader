@@ -1,3 +1,9 @@
+"""Strategy backtesting engine with NEPSE-specific transaction costs.
+
+Supports SMA crossover strategies and returns performance metrics including
+Sharpe ratio, max drawdown, and win rate.
+"""
+
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
@@ -12,6 +18,10 @@ STT_RATE = 0.001               # 0.1% (on sell only)
 
 
 async def run_backtest(symbol: str, fast_ma: int = 20, slow_ma: int = 50, days: int = 365):
+    """Run a SMA crossover backtest for *symbol* with NEPSE transaction costs.
+
+    Returns a dict with return metrics, trade stats, and an equity curve.
+    """
     cutoff = datetime.now(timezone.utc).date() - timedelta(days=days)
 
     async with async_session() as session:

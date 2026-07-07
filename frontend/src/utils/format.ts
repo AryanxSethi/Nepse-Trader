@@ -1,3 +1,4 @@
+/** Format a number as NPR currency string. */
 export function formatNPR(value: number | string | undefined | null, decimals = 2): string {
   if (value == null) return '\u2014'
   const num = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]/g, '')) : value
@@ -5,6 +6,7 @@ export function formatNPR(value: number | string | undefined | null, decimals = 
   return `NPR ${num.toLocaleString('en', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`
 }
 
+/** Format a value as signed percentage string. */
 export function formatPercent(value: number | string | undefined | null, decimals = 2): string {
   if (value == null) return '\u2014'
   const num = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]/g, '')) : value
@@ -13,6 +15,7 @@ export function formatPercent(value: number | string | undefined | null, decimal
   return `${sign}${num.toFixed(decimals)}%`
 }
 
+/** Format a value as signed numeric change. */
 export function formatChange(value: number | string | undefined | null): string {
   if (value == null) return '\u2014'
   const num = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]/g, '')) : value

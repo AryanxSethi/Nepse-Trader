@@ -1,3 +1,8 @@
+"""Static NEPSE sector-to-stock mappings.
+
+Used for fallback sector lookups when upstream APIs are unavailable.
+"""
+
 SECTOR_MAP = {
     "Commercial Banks": [
         {"symbol": "ADBL", "name": "Agriculture Development Bank Limited"},
@@ -608,14 +613,35 @@ SECTOR_MAP = {
 
 
 def get_sectors() -> list[str]:
+    """Return the list of all available sector names.
+
+    Returns:
+        A list of sector name strings.
+    """
     return list(SECTOR_MAP.keys())
 
 
 def get_stocks_by_sector(sector: str) -> list[dict]:
+    """Return the list of stocks for a given sector.
+
+    Args:
+        sector: The sector name to look up.
+
+    Returns:
+        A list of stock dicts, or an empty list if not found.
+    """
     return SECTOR_MAP.get(sector, [])
 
 
 def get_sector_for_symbol(symbol: str) -> str | None:
+    """Look up the sector name for a given stock symbol.
+
+    Args:
+        symbol: The stock symbol to look up.
+
+    Returns:
+        The sector name, or None if not found.
+    """
     symbol_up = symbol.upper()
     for sector, stocks in SECTOR_MAP.items():
         for s in stocks:

@@ -7,6 +7,7 @@ LOOKUP_TABLE = [
 
 
 def rdx(salt2: int) -> int:
+    """Reverse the bits of salt2 in groups of 3."""
     v = salt2
     r = 0
     while v > 0:
@@ -16,6 +17,7 @@ def rdx(salt2: int) -> int:
 
 
 def cdx(salt2: int) -> str:
+    """Encode salt2 into a CSS-class string."""
     a = rdx(salt2) + 96480
     v = a
     r = ''
@@ -26,14 +28,17 @@ def cdx(salt2: int) -> str:
 
 
 def ndx(salt2: int) -> int:
+    """Compute a column index from salt2."""
     return (salt2 * 3 + 7) % 13
 
 
 def mdx(salt1: int, salt2: int) -> str:
+    """XOR two salt values into a single character."""
     return chr(salt1 ^ salt2)
 
 
 def bdx(generated_css: str) -> str:
+    """Sort CSS rules within a selector block by length."""
     parts = generated_css.split('{')
     if len(parts) < 2:
         return generated_css
@@ -44,6 +49,7 @@ def bdx(generated_css: str) -> str:
 
 
 def extract_salts(css_text: str) -> tuple[int, int]:
+    """Extract salt1 and salt2 values from obfuscated CSS text."""
     salt1 = 0
     salt2 = 0
     for line in css_text.splitlines():
@@ -62,6 +68,7 @@ def extract_salts(css_text: str) -> tuple[int, int]:
 
 
 def build_column_map(salt1: int, salt2: int, columns: list[str]) -> dict[str, str]:
+    """Map obfuscated column names to standard NEPSE column names."""
     indices = [ndx(salt2 + i) for i in range(len(columns))]
     standard = ['ltp', 'change', 'percentChange', 'open', 'high', 'low',
                 'volume', 'turnover', 'close', 'previousClose', '52WeekHigh',

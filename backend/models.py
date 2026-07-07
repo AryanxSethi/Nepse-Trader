@@ -1,9 +1,16 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Date, Index, UniqueConstraint
-from database import Base
+"""SQLAlchemy ORM models for securities, daily prices, signals, and portfolio holdings.
+"""
+
 from datetime import datetime, timezone
+
+from sqlalchemy import Column, Date, DateTime, Float, Index, Integer, String, Text, UniqueConstraint
+
+from database import Base
 
 
 class Security(Base):
+    """A listed company / stock symbol on NEPSE."""
+
     __tablename__ = "securities"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -14,6 +21,8 @@ class Security(Base):
 
 
 class DailyPrice(Base):
+    """Daily OHLCV + turnover record for a single symbol."""
+
     __tablename__ = "daily_prices"
 
     __table_args__ = (
@@ -31,7 +40,8 @@ class DailyPrice(Base):
     volume = Column(Integer)
     turnover = Column(Float)
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
+        """Serialize daily price to a plain dictionary."""
         return {
             "symbol": self.symbol,
             "date": self.date.isoformat(),
@@ -45,6 +55,8 @@ class DailyPrice(Base):
 
 
 class Signal(Base):
+    """A trading signal (BUY / SELL / HOLD) generated for a symbol."""
+
     __tablename__ = "signals"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -56,6 +68,8 @@ class Signal(Base):
 
 
 class PortfolioHolding(Base):
+    """A user-defined portfolio position for tracking purposes."""
+
     __tablename__ = "portfolio_holdings"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -67,7 +81,8 @@ class PortfolioHolding(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
+        """Serialize portfolio holding to a plain dictionary."""
         return {
             "id": self.id,
             "symbol": self.symbol,

@@ -7,6 +7,7 @@ import { PageTransition } from '../components/Navbar'
 import { SignalIcon, WarningIcon } from '../components/Icons'
 import { usePageTitle } from '../hooks/usePageTitle'
 
+/** Technical indicator-based signal list with filtering by signal type. */
 export default function Signals() {
   usePageTitle('Signals')
   const navigate = useNavigate()

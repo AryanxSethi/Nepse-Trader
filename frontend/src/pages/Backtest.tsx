@@ -13,6 +13,7 @@ interface StockOption {
   name: string
 }
 
+/** MA crossover backtest page with equity curve and performance metrics. */
 export default function Backtest() {
   usePageTitle('Backtest')
   const [symbol, setSymbol] = useState('NABIL')

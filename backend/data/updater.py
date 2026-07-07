@@ -1,3 +1,5 @@
+"""Daily price updater for yonepse LTP data and signal generation."""
+
 import logging
 from datetime import date, timedelta
 import httpx
@@ -103,7 +105,10 @@ async def update_daily_prices(target_date: date | None = None) -> int:
 
 
 async def run_daily_update():
-    """Backfill missing daily prices from last stored date up to yesterday."""
+    """Backfill missing daily prices from last stored date up to yesterday.
+
+    Skips weekends. Runs signal generation after successful backfill.
+    """
     async with async_session() as session:
         last_date_row = await session.execute(
             select(func.max(DailyPrice.date))

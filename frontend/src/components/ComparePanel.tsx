@@ -54,6 +54,7 @@ const METRICS = [
   { label: 'Confidence', key: 'signal_confidence', fmt: (v: number | null) => v != null ? `${v}%` : '\u2014' },
 ]
 
+/** Side-by-side comparison of two stocks with metrics table and charts. */
 export default function ComparePanel({ initialSymbols }: { initialSymbols?: string[] | null }) {
   const [symbol1, setSymbol1] = useState(initialSymbols?.[0] || '')
   const [symbol2, setSymbol2] = useState(initialSymbols?.[1] || '')

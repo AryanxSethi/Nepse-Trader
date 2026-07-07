@@ -36,6 +36,7 @@ interface Props {
   currentSymbol?: string
 }
 
+/** Sidebar with watchlist management and AI tip shortcuts. */
 export default function AISidebar({ onSelectSymbol, currentSymbol }: Props) {
   const [watchlist, setWatchlist] = useState<string[]>(() => loadWatchlist())
   const [prices, setPrices] = useState<Map<string, WatchlistPrice>>(new Map())

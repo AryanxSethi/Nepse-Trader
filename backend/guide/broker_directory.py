@@ -1,3 +1,5 @@
+"""Broker directory — caches broker list and provides search/top queries."""
+
 import time
 import logging
 
@@ -11,6 +13,7 @@ CACHE_TTL = 300
 
 
 async def _ensure_brokers():
+    """Refresh broker list from upstream if the cache is stale or empty."""
     global _broker_cache, _broker_cache_ts
     now = time.time()
     if _broker_cache is not None and now - _broker_cache_ts < CACHE_TTL:
@@ -27,6 +30,8 @@ async def _ensure_brokers():
 
 
 def search_brokers(query: str, _force_brokers: list | None = None) -> list[dict]:
+    """Search cached brokers by name, code, district or phone; return up to 30 matches."""
+
     brokers = _force_brokers if _force_brokers is not None else _broker_cache
     if brokers is None:
         return []
@@ -47,6 +52,7 @@ def search_brokers(query: str, _force_brokers: list | None = None) -> list[dict]
 
 
 def get_top_brokers(period: str = 'monthly', limit: int = 20) -> list[dict]:
+    """Return top brokers by turnover for the given period (daily/weekly/monthly)."""
     brokers = _broker_cache or []
     if period == 'daily':
         key = 'latest_turnover'

@@ -101,6 +101,7 @@ function statusBadge(status: string): JSX.Element | null {
 
 const PAGE_SIZE = 20
 
+/** IPO/FPO listings page with paginated issues table and investor guides. */
 export default function IPOSection() {
   usePageTitle('IPO / FPO')
   const [activeGuide, setActiveGuide] = useState<number | null>(null)

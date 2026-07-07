@@ -4,6 +4,7 @@ function Icon({ children, size = 16, className = '' }: IconProps & { children: R
   return <span className={`inline-flex items-center justify-center ${className}`} style={{ width: size, height: size }}>{children}</span>
 }
 
+/** Search magnifying glass icon. */
 export function SearchIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -14,6 +15,7 @@ export function SearchIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Sun icon for light mode toggle. */
 export function SunIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -24,6 +26,7 @@ export function SunIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Moon icon for dark mode toggle. */
 export function MoonIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -34,6 +37,7 @@ export function MoonIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Line chart icon. */
 export function ChartIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -44,6 +48,7 @@ export function ChartIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Home house icon. */
 export function HomeIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -54,6 +59,7 @@ export function HomeIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Book icon for guide/educational content. */
 export function BookIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -64,6 +70,7 @@ export function BookIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Zigzag chart icon for backtesting. */
 export function BacktestIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -74,6 +81,7 @@ export function BacktestIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Signal/bars icon for trading signals. */
 export function SignalIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -84,6 +92,7 @@ export function SignalIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Brain icon for AI/analyst features. */
 export function BrainIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -95,6 +104,7 @@ export function BrainIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Trending upward arrow icon. */
 export function TrendingUpIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -105,6 +115,7 @@ export function TrendingUpIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Trending downward arrow icon. */
 export function TrendingDownIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -115,6 +126,7 @@ export function TrendingDownIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Chat bubble icon. */
 export function ChatIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -125,6 +137,7 @@ export function ChatIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Info circle icon. */
 export function InfoIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -135,6 +148,7 @@ export function InfoIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Triangle warning/exclamation icon. */
 export function WarningIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -145,6 +159,7 @@ export function WarningIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Close/X icon. */
 export function CloseIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -155,6 +170,7 @@ export function CloseIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Building/company icon. */
 export function CompanyIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -165,6 +181,7 @@ export function CompanyIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Link/source chain icon. */
 export function SourceIcon({ size = 16, className = '' }: IconProps) {
   return (
     <Icon size={size} className={className}>
@@ -175,36 +192,42 @@ export function SourceIcon({ size = 16, className = '' }: IconProps) {
   )
 }
 
+/** Upward chevron arrow icon. */
 export function ArrowUpIcon({ size = 16, className = '' }: IconProps) {
   return <Icon size={size} className={className}>
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
   </Icon>
 }
 
+/** Downward chevron arrow icon. */
 export function ArrowDownIcon({ size = 16, className = '' }: IconProps) {
   return <Icon size={size} className={className}>
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
   </Icon>
 }
 
+/** Rightward chevron arrow icon. */
 export function ArrowRightIcon({ size = 16, className = '' }: IconProps) {
   return <Icon size={size} className={className}>
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
   </Icon>
 }
 
+/** Left-pointing chevron icon. */
 export function ChevronLeftIcon({ size = 16, className = '' }: IconProps) {
   return <Icon size={size} className={className}>
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
   </Icon>
 }
 
+/** Right-pointing chevron icon. */
 export function ChevronRightIcon({ size = 16, className = '' }: IconProps) {
   return <Icon size={size} className={className}>
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
   </Icon>
 }
 
+/** Document/file icon. */
 export function DocumentIcon({ size = 16, className = '' }: IconProps) {
   return <Icon size={size} className={className}>
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -217,6 +240,7 @@ export function DocumentIcon({ size = 16, className = '' }: IconProps) {
   </Icon>
 }
 
+/** Comparison bars icon. */
 export function CompareIcon({ size = 16, className = '' }: IconProps) {
   return <Icon size={size} className={className}>
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -227,6 +251,7 @@ export function CompareIcon({ size = 16, className = '' }: IconProps) {
   </Icon>
 }
 
+/** Wallet icon for portfolio. */
 export function WalletIcon({ size = 16, className = '' }: IconProps) {
   return <Icon size={size} className={className}>
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -235,6 +260,7 @@ export function WalletIcon({ size = 16, className = '' }: IconProps) {
   </Icon>
 }
 
+/** Grid/table icon. */
 export function TableIcon({ size = 16, className = '' }: IconProps) {
   return <Icon size={size} className={className}>
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

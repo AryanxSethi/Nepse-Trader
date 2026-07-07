@@ -11,6 +11,7 @@ interface Props {
   onChange: (days: number) => void
 }
 
+/** Button group for selecting predefined date ranges (1W, 1M, 3M, etc.). */
 export default function DateRangeSelector({ selected, onChange }: Props) {
   return (
     <div className="flex gap-1 flex-wrap">

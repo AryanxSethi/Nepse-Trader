@@ -1,3 +1,5 @@
+"""Broker data fetcher from yonepse API with circuit breaker."""
+
 import logging
 
 from config import YONEPSE_BASE
@@ -13,6 +15,7 @@ circuit_breaker = CircuitBreaker(threshold=3, cooloff=60.0)
 
 
 async def _fetch_json(path: str, source: str) -> FetchResult:
+    """Fetch JSON from yonepse API with circuit breaker."""
     url = f"{YONEPSE_BASE}{path}"
     if circuit_breaker.is_open(source):
         logger.warning('[%s] circuit open, skipping', source)
@@ -26,6 +29,7 @@ async def _fetch_json(path: str, source: str) -> FetchResult:
 
 
 async def fetch_brokers() -> list[dict]:
+    """Fetch the full broker list from yonepse, or return [] on failure."""
     result = await _fetch_json("/data/other/brokers.json", "yonepse/brokers")
     if result.ok and isinstance(result.data, list):
         return result.data
@@ -34,6 +38,7 @@ async def fetch_brokers() -> list[dict]:
 
 
 def transform_broker(raw: dict) -> dict:
+    """Flatten a raw yonepse broker dict into a clean output format."""
     today = raw.get("todayStats") or {}
     rating = raw.get("rating") or {}
     return {

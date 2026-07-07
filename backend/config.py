@@ -1,3 +1,8 @@
+"""Application configuration loaded from environment variables and defaults.
+
+The ``.env`` file at the project root is loaded automatically on import.
+"""
+
 import os
 from pathlib import Path
 from dotenv import load_dotenv

@@ -1,3 +1,9 @@
+"""Merolagani market data fetcher (live prices, index, company details).
+
+Supports HTML scraping, SignalR long-polling for real-time indices, and a
+per-source circuit breaker.
+"""
+
 import asyncio
 import json
 import logging
@@ -14,11 +20,14 @@ from data._http import CircuitBreaker
 logger = logging.getLogger('merolagani_fetcher')
 
 class MerolaganiFetcher:
+    """HTTP client wrapping Merolagani market endpoints with circuit breaker."""
     def __init__(self):
+        """Initialize the Merolagani fetcher."""
         self._client: httpx.AsyncClient | None = None
         self._circuit_breaker = CircuitBreaker(threshold=3, cooloff=60.0)
 
     async def _init_client(self):
+        """Initialize the async HTTPX client if not already created."""
         if self._client is None:
             self._client = httpx.AsyncClient(
                 headers={'User-Agent': DEFAULT_USER_AGENT},
@@ -27,6 +36,20 @@ class MerolaganiFetcher:
             )
 
     async def _fetch_with_retry(self, client, url, params=None, max_retries=3):
+        """Fetch a URL with exponential backoff retry.
+
+        Args:
+            client: The HTTPX async client.
+            url: The URL to fetch.
+            params: Optional query parameters.
+            max_retries: Maximum number of retry attempts (default 3).
+
+        Returns:
+            The HTTP response on success.
+
+        Raises:
+            httpx.HTTPError: If all retries are exhausted.
+        """
         last_exc = None
         for attempt in range(max_retries):
             try:
@@ -52,6 +75,14 @@ class MerolaganiFetcher:
         raise last_exc
 
     async def _get(self, path: str) -> str | None:
+        """Make a GET request through the circuit breaker.
+
+        Args:
+            path: The API path relative to the base URL.
+
+        Returns:
+            Response text on success, or None if the circuit is open or request fails.
+        """
         await self._init_client()
         if self._circuit_breaker.is_open('merolagani'):
             logger.debug('[merolagani] circuit open, skipping %s', path)
@@ -67,6 +98,11 @@ class MerolaganiFetcher:
             return None
 
     async def get_live_prices(self) -> list[dict]:
+        """Fetch live trading prices from the market page.
+
+        Returns:
+            A list of price dicts with keys: symbol, ltp, percent_change, open, high, low, turnover.
+        """
         html = await self._get('/LatestMarket.aspx')
         if not html:
             return []
@@ -115,6 +151,11 @@ class MerolaganiFetcher:
         return prices
 
     async def get_market_summary(self) -> dict:
+        """Fetch market summary including gainers, losers, turnovers, and sectors.
+
+        Returns:
+            A dict with keys 'gainers', 'losers', 'turnovers', 'sectors' if available.
+        """
         html = await self._get('/LatestMarket.aspx')
         if not html:
             return {}
@@ -140,15 +181,23 @@ class MerolaganiFetcher:
         return result
 
     async def get_index_history_page(self) -> str | None:
+        """Fetch the index history HTML page."""
         return await self._get('/Indices.aspx')
 
     async def get_live_index(self) -> dict | None:
+        """Fetch live index data via SignalR long-polling.
+
+        Returns:
+            A dict mapping index names to their current value, change, and percent change,
+            or None if the request fails.
+        """
         if self._circuit_breaker.is_open('merolagani'):
             return None
         try:
             conn_data = json.dumps([{'name': 'stocktickerhub'}])
 
             def _signalr() -> dict | None:
+                """Run synchronous SignalR negotiation and polling."""
                 with httpx.Client(
                     headers={'User-Agent': DEFAULT_USER_AGENT},
                     timeout=MEROLAGANI_TIMEOUT, verify=False,
@@ -217,6 +266,14 @@ class MerolaganiFetcher:
             return None
 
     def _parse_gainers_losers(self, rows):
+        """Parse gainers/losers rows from the market summary table.
+
+        Args:
+            rows: BeautifulSoup tr elements.
+
+        Returns:
+            A list of dicts with symbol, ltp, and percent_change.
+        """
         items = []
         for row in rows[1:]:
             cells = row.find_all('td')
@@ -235,6 +292,14 @@ class MerolaganiFetcher:
         return items
 
     def _parse_turnovers(self, rows):
+        """Parse turnover rows from the market summary table.
+
+        Args:
+            rows: BeautifulSoup tr elements.
+
+        Returns:
+            A list of dicts with symbol, turnover, and ltp.
+        """
         items = []
         for row in rows[1:]:
             cells = row.find_all('td')
@@ -253,6 +318,14 @@ class MerolaganiFetcher:
         return items
 
     def _parse_sectors(self, rows):
+        """Parse sector rows from the market summary table.
+
+        Args:
+            rows: BeautifulSoup tr elements.
+
+        Returns:
+            A list of dicts with name and turnover.
+        """
         items = []
         for row in rows[1:]:
             cells = row.find_all('td')
@@ -269,6 +342,14 @@ class MerolaganiFetcher:
         return items
 
     async def get_company_detail(self, symbol: str) -> dict:
+        """Fetch company detail page by symbol.
+
+        Args:
+            symbol: The company's ticker symbol.
+
+        Returns:
+            A dict with parsed fields such as sector, market_price, percent_change, etc.
+        """
         html = await self._get(f'/CompanyDetail.aspx?symbol={symbol.upper()}')
         if not html:
             return {}
@@ -311,9 +392,11 @@ class MerolaganiFetcher:
         return result
 
     def circuit_breaker_status(self, source: str) -> str:
+        """Return the circuit breaker status for the given source."""
         return self._circuit_breaker.status(source)
 
     async def stop(self):
+        """Close the HTTPX client if open."""
         if self._client:
             await self._client.aclose()
             self._client = None

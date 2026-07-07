@@ -22,6 +22,7 @@ function getCSSVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
+/** Interactive candlestick/line chart with technical indicator overlays. */
 export default function StockChart({ data, indicators, overlays, height = 420 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null)
