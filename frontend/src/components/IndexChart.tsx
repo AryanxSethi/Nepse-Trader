@@ -44,14 +44,16 @@ export default function IndexChart() {
     chartRef.current = chart
     nepseRef.current = chart.addSeries(LineSeries, {
       priceScaleId: 'right',
+      title: 'NEPSE',
       color: '#06b6d4', lineWidth: 3,
-      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+      priceLineVisible: false, lastValueVisible: false,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
     })
     sensRef.current = chart.addSeries(LineSeries, {
       priceScaleId: 'left',
+      title: 'Sensitive',
       color: '#f59e0b', lineWidth: 3,
-      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+      priceLineVisible: false, lastValueVisible: false,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
     })
     chart.priceScale('left').applyOptions({
