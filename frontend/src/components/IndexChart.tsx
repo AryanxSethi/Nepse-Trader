@@ -4,6 +4,7 @@ import { useMarketStatus } from '../hooks/useMarketStatus'
 import { fetchIndexHistory } from '../api/endpoints'
 import { POLL } from '../config/constants'
 
+/** TradingView-style line chart for NEPSE and Sensitive Index (today-only intraday). */
 export default function IndexChart() {
   const marketStatus = useMarketStatus()
   const containerRef = useRef<HTMLDivElement>(null)

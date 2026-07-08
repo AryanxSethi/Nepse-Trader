@@ -113,6 +113,25 @@ Invoke-WebRequest "http://127.0.0.1:8001/api/guide/search?q=how+to+start+trading
 - Portfolio: user-specific (SQLite)
 - LLM model: qwen2.5:7b-instruct-q4_k_m
 
+## Recent Changes (Session 2026-07-07)
+
+### Chart Fix: Sensitive Index = 0 & Flat Lines
+- **Root cause (Sensitive = 0)**: yonepse warmup was gated by `if not LIVE_CACHE.get('current_indices')` — if disk cache already had a partial `current_indices` (NEPSE only), Sensitive Index was never seeded
+- **Fix**: Always fetch yonepse indices on startup and merge into existing `current_indices` — missing sub-indices (Sensitive, Float, etc.) are added without overwriting live values
+- **Root cause (flat lines)**: Both line series shared one price scale. NEPSE (~2000) and Sensitive (~350) have vastly different magnitudes, so micro-changes were invisible
+- **Fix**: NEPSE uses `priceScaleId: 'right'`, Sensitive uses `priceScaleId: 'left'` with `scaleMargins: { top: 0.5, bottom: 0.05 }` — each series auto-scales independently
+- **Also fixed**: Merolagani `get_live_index()` keys now normalized via `_normalize_index_name()` (same as Sharesansar path) so live values update correct index keys
+- **Also fixed**: Empty-today fallback — changed `json.today ?? json.snapshots` to `json.today?.length ? json.today : json.snapshots` so `[]` properly falls through
+
+### Full Docstring Pass (204 entities)
+- **Backend**: Google-style docstrings (Args/Returns) added to all 108 undocumented functions/methods across `main.py` (47), `data/merolagani_fetcher.py` (15), `data/import_nepse_data.py` (6), `data/assets/css_wasm_funcs.py` (7), `data/fetcher_sectors.py` (3), `guide/broker_directory.py` (3), `guide/knowledge_base.py` (2), `analysis/indicators.py` (1), `models.py` (2)
+- **Frontend**: JSDoc added to all 96 undocumented exports across `api/` (30), `hooks/` (8), `utils/` (4), `components/` (40), `pages/` (10), `context/` (2), `App.tsx` (1), `IndexChart.tsx` (1)
+- Verifed: `python -m py_compile` on all backend files, `npx tsc -b --noEmit`, `npx oxlint` — all pass
+
+### Other Fixes
+- **Frontend**: `today` field in `fetchIndexHistory` response now handles empty arrays properly (fallback to `snapshots`)
+- **Frontend**: Chart no longer shows both series on same price axis — independent left/right scales with proper `scaleMargins`
+
 ## Important Known Issues
 - Port 8000 stuck in Windows TCP TIME_WAIT — use 8001
 - `fetch_all_securities()` includes 376 companies; some are bonds/debentures

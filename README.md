@@ -61,8 +61,9 @@ nepse-trader/
 
 ```bash
 cd backend
+venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python main.py
+python -m uvicorn main:app --host 127.0.0.1 --port 8001
 ```
 
 Server starts on `http://127.0.0.1:8001`. API docs at `/docs`.
@@ -98,7 +99,7 @@ ollama pull qwen2.5:7b-instruct-q4_k_m
 | GET | `/api/market/live` | Live prices, indices, gainers/losers |
 | GET | `/api/market/overview` | Market overview with summary |
 | GET | `/api/market/status` | Market open/closed status |
-| GET | `/api/market/index-history` | NEPSE index chart data |
+| GET | `/api/market/index-history` | Index chart data (`today`=intraday, `snapshots`=60‑entry tail, `points`=blended) |
 | GET | `/api/companies` | All listed companies with prices |
 | GET | `/api/securities` | Securities list with search |
 | GET | `/api/search` | Fuzzy symbol search |
