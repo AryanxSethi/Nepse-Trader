@@ -114,11 +114,11 @@ export default function IPOSection() {
   const tableWrapperRef = useRef<HTMLDivElement>(null)
   const [canScrollRight, setCanScrollRight] = useState(false)
 
-  const fetchPage = useCallback(async (p: number) => {
+  const fetchPage = useCallback(async (p: number, signal?: AbortSignal) => {
     setLoading(true)
     setFetchError('')
     try {
-      const result = await fetchIpos(p, PAGE_SIZE)
+      const result = await fetchIpos(p, PAGE_SIZE, { signal })
       setItems((result.data || []) as unknown as IPOItem[])
       setPager(result.meta as unknown as Pager)
       setFetchedAt(new Date().toISOString())
@@ -135,7 +135,7 @@ export default function IPOSection() {
 
   useEffect(() => {
     const controller = new AbortController()
-    fetchPage(page)
+    fetchPage(page, controller.signal)
     return () => controller.abort()
   }, [page, fetchPage])
 

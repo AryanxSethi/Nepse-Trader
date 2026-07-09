@@ -200,7 +200,7 @@ class MerolaganiFetcher:
                 """Run synchronous SignalR negotiation and polling."""
                 with httpx.Client(
                     headers={'User-Agent': DEFAULT_USER_AGENT},
-                    timeout=MEROLAGANI_TIMEOUT, verify=False,
+                    timeout=MEROLAGANI_TIMEOUT,
                 ) as c:
                     c.get(f'{MEROLAGANI_BASE}/LatestMarket.aspx')
                     neg = c.post(

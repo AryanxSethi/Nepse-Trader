@@ -3,6 +3,15 @@ import { createChart, ColorType, CandlestickSeries, LineSeries } from 'lightweig
 import type { PricePoint, Indicators } from '../types'
 import { WarningIcon } from './Icons'
 
+interface CandleItem {
+  time: string
+  open: number
+  high: number
+  low: number
+  close: number
+  color?: string
+}
+
 interface OverlayData {
   vwap?: number
   prevClose?: number
@@ -83,8 +92,8 @@ export default function StockChart({ data, indicators, overlays, height = 420 }:
         return
       }
 
-      const candleData = validData.map((d, i, arr) => {
-        const item: Record<string, unknown> = {
+      const candleData: CandleItem[] = validData.map((d, i, arr) => {
+        const item: CandleItem = {
           time: d.date,
           open: d.open ?? d.close,
           high: d.high ?? d.close,
@@ -111,7 +120,7 @@ export default function StockChart({ data, indicators, overlays, height = 420 }:
           borderDownColor: '#ef4444',
           wickUpColor: '#22c55e',
           wickDownColor: '#ef4444',
-        }).setData(candleData as any)
+        }).setData(candleData as CandleItem[])
       } else {
         chart.addSeries(LineSeries, {
           color: '#3b82f6',

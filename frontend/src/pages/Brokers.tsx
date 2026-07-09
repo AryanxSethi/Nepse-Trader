@@ -4,8 +4,8 @@ import { PageTransition } from '../components/Navbar'
 import RefreshIndicator from '../components/RefreshIndicator'
 import { SearchIcon, CompanyIcon, WarningIcon } from '../components/Icons'
 import { SkeletonBlock } from '../components/Skeleton'
-import type { BrokerDetail } from '../types'
 import { fetchBrokerSearch, fetchBrokerTop } from '../api/endpoints'
+import { formatTurnover } from '../utils/format'
 
 interface BrokerData {
   rank: number
@@ -20,12 +20,6 @@ interface BrokerData {
   latest_turnover: number
 }
 
-function formatTurnover(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`
-  if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`
-  if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`
-  return n.toLocaleString()
-}
 
 /** Broker directory page with turnover rankings, search, and TMS links. */
 export default function Brokers() {
@@ -43,7 +37,14 @@ export default function Brokers() {
     try {
         if (q) {
           const data = await fetchBrokerSearch(q)
-          setBrokers((data.brokers || []).map((b, i: number) => ({ ...b as any, rank: i + 1 })))
+          setBrokers((data.brokers || []).map((b, i) => ({
+            ...b, rank: i + 1,
+            districts: b.districts || [],
+            branch_count: b.branch_count || 0,
+            active_status: b.active_status || '',
+            thirty_days_turnover: b.thirty_days_turnover || 0,
+            latest_turnover: b.latest_turnover || 0,
+          } as BrokerData)))
         } else {
           const data = await fetchBrokerTop(p, 50)
           setBrokers(data.brokers || [])
@@ -175,7 +176,7 @@ export default function Brokers() {
                           {b.districts?.slice(0, 3).join(', ')}{b.districts?.length > 3 ? ` +${b.districts.length - 3}` : ''}
                         </td>
                         <td className="px-4 py-3 text-right text-text font-mono-nums text-xs font-medium">
-                          Rs {formatTurnover((b as any)[turnoverKey] || 0)}
+                          Rs {formatTurnover((b as Record<string, unknown>)[turnoverKey] as number || 0, 'nepali')}
                         </td>
                         <td className="px-4 py-3 text-center text-text-muted text-xs">{b.branch_count}</td>
                         <td className="px-4 py-3 text-center">

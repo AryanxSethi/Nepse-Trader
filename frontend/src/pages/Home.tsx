@@ -8,6 +8,7 @@ import { SkeletonCard } from '../components/Skeleton'
 import { useMarketOverview } from '../hooks/useStockData'
 import { useMarketStatus } from '../hooks/useMarketStatus'
 import { usePageTitle } from '../hooks/usePageTitle'
+import { formatTurnover } from '../utils/format'
 import { PageTransition } from '../components/Navbar'
 import { formatNPR, formatChange } from '../utils/format'
 import { WarningIcon, TrendingUpIcon, TrendingDownIcon, ChartIcon, ArrowRightIcon } from '../components/Icons'
@@ -20,13 +21,6 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(seconds / 3600)}h ago`
 }
 
-function formatTurnover(val: number | null | undefined): string {
-  if (val == null) return '\u2014'
-  if (val >= 1e9) return `${(val / 1e9).toFixed(2)}B`
-  if (val >= 1e6) return `${(val / 1e6).toFixed(2)}M`
-  if (val >= 1e3) return `${(val / 1e3).toFixed(2)}K`
-  return val.toFixed(2)
-}
 
 /** Main market overview page with indices, summary, gainers/losers, and chart. */
 export default function Home() {

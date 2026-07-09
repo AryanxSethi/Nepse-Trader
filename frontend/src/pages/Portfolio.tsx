@@ -12,7 +12,7 @@ import type { PortfolioHolding } from '../api/endpoints'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { POLL } from '../config/constants'
 import {
-  TrendingUpIcon, TrendingDownIcon, CloseIcon, WarningIcon,
+  TrendingUpIcon, TrendingDownIcon, CloseIcon,
 } from '../components/Icons'
 
 interface PortfolioData {

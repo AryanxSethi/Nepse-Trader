@@ -32,4 +32,6 @@ MEROLAGANI_TIMEOUT = 20
 # --- User agents ---
 DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
+
 os.makedirs(DATA_DIR, exist_ok=True)

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { apiPostStream } from '../api/client'
 
 export interface AskResponse {
   answer: string
@@ -53,14 +54,8 @@ export function useLLMStream() {
         if (stored) history = JSON.parse(stored).slice(-6)
       } catch {}
 
-      const res = await fetch('/api/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, history }),
-        signal: controller.signal,
-      })
+      const res = await apiPostStream('/api/ask', { question, history }, { signal: controller.signal, timeout: 180000 })
 
-      if (!res.ok) throw new Error('Failed to get answer')
       if (!res.body) throw new Error('No response body')
 
       const reader = res.body.getReader()
@@ -140,12 +135,7 @@ async function collectAnswer(question: string): Promise<AskResponse> {
     if (stored) history = JSON.parse(stored).slice(-6)
   } catch {}
 
-  const res = await fetch('/api/ask', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, history }),
-  })
-  if (!res.ok) throw new Error('Failed to get answer')
+  const res = await apiPostStream('/api/ask', { question, history })
   if (!res.body) throw new Error('No response body')
 
   const reader = res.body.getReader()

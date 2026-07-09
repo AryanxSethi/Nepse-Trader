@@ -83,12 +83,12 @@ export default function IndexChart() {
         const data = json.today?.length ? json.today : (json.snapshots ?? [])
         if (!data || data.length === 0) return
         if (nepseRef.current) {
-          nepseRef.current.setData(data.map(s => ({ time: s.time as any, value: s.values['NEPSE'] ?? 0 })) as any)
+          nepseRef.current.setData(data.map(s => ({ time: s.time as number, value: s.values['NEPSE'] ?? 0 })))
         }
         if (sensRef.current) {
-          sensRef.current.setData(data.map(s => ({ time: s.time as any, value: s.values['Sensitive Index'] ?? 0 })) as any)
+          sensRef.current.setData(data.map(s => ({ time: s.time as number, value: s.values['Sensitive Index'] ?? 0 })))
         }
-      } catch { /* ignore */ }
+      } catch (err) { console.warn('[IndexChart] refresh failed:', err) }
     }
     refresh()
     id = setInterval(refresh, POLL.SNAPSHOT_OPEN)

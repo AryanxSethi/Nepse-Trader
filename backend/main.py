@@ -6,11 +6,13 @@ portfolio tracking, IPO listings, broker directory, and an AI-powered chat.
 
 import asyncio
 import time as time_module
+import time
 import pandas as pd
 import httpx
 import json
 import logging
 import re
+from collections import defaultdict
 from datetime import datetime, timedelta, date, timezone
 from contextlib import asynccontextmanager
 from database import engine
@@ -18,14 +20,15 @@ from database import engine
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(levelname)s: %(message)s')
 logger = logging.getLogger('main')
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import select, desc, text
 from bs4 import BeautifulSoup
 
-from config import OLLAMA_URL, OLLAMA_MODEL
+from config import OLLAMA_URL, OLLAMA_MODEL, CORS_ORIGINS
 from database import init_db, async_session
 from models import Security, DailyPrice, Signal, PortfolioHolding
 from data.fetcher import (
@@ -36,7 +39,7 @@ from data.fetcher import (
 )
 from data.seeder import seed_securities
 from data.updater import run_daily_update
-from data.market_scheduler import MarketScheduler, get_market_status
+from data.market_scheduler import MarketScheduler, get_market_status, NPT
 from data.merolagani_fetcher import MerolaganiFetcher
 from data.sharesansar_fetcher import SharesansarFetcher
 from analysis.indicators import compute_indicators, compute_signal
@@ -263,12 +266,12 @@ async def start_index_polling(cache: dict):
                         logger.warning("Sharesansar index poll failed: %s", e)
 
                 if all_indices:
-                    base = dict(LIVE_CACHE.get('current_indices', {}))
+                    async with live_cache_lock:
+                        base = dict(LIVE_CACHE.get('current_indices', {}))
                     base.update(all_indices)
                     all_indices = base
 
-                    now_utc = datetime.now(timezone.utc)
-                    now_npt = now_utc + timedelta(hours=5, minutes=45)
+                    now_npt = datetime.now(NPT)
 
                     vals: dict[str, float | None] = {}
                     for name, entry in all_indices.items():
@@ -392,7 +395,7 @@ app = FastAPI(title="NEPSE Trader", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -415,6 +418,51 @@ async def add_cache_headers(request, call_next):
     if path in CACHE_CONTROL_ROUTES:
         response.headers["Cache-Control"] = CACHE_CONTROL_ROUTES[path]
     return response
+
+
+# --- Rate limiting configuration ---
+
+RATE_LIMIT_RULES: list[tuple[str, int, int]] = [
+    ("/api/signals/generate", 3, 60),
+    ("/api/backtest", 5, 60),
+    ("/api/ask", 10, 60),
+    ("/api/market", 30, 60),
+    ("/api/portfolio", 20, 60),
+]
+"""Prefix-based rate limits: (path_prefix, max_requests, window_seconds)."""
+
+_ip_buckets: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Sliding-window rate limiter keyed by client IP and request path."""
+    path = request.url.path
+    if path == "/api/health" or not path.startswith("/api"):
+        return await call_next(request)
+
+    max_reqs, window = 60, 60
+    for prefix, m, w in RATE_LIMIT_RULES:
+        if path.startswith(prefix):
+            max_reqs, window = m, w
+            break
+
+    ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    bucket = _ip_buckets[ip][path]
+    cutoff = now - window
+    bucket[:] = [t for t in bucket if t > cutoff]
+
+    if len(bucket) >= max_reqs:
+        retry_after = int(bucket[0] + window - now) if bucket else int(window)
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests. Please slow down."},
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    bucket.append(now)
+    return await call_next(request)
 
 
 async def _fetch_live_all() -> list[dict]:
@@ -440,7 +488,7 @@ async def _fetch_live_all() -> list[dict]:
 
 
 @app.get("/api/companies")
-async def get_companies():
+async def get_companies() -> dict:
     """GET /api/companies — return all listed companies with LTP, change, volume, turnover, trades."""
     data = await _fetch_live_all()
     return {
@@ -462,12 +510,13 @@ async def get_companies():
 
 
 @app.get("/api/securities")
-async def get_securities(search: str = ""):
+async def get_securities(search: str = "") -> dict:
     """GET /api/securities — search securities by symbol or name; return all if no search query."""
     async with async_session() as session:
         if search:
+            pattern = f"%{search}%"
             result = await session.execute(
-                select(Security).where(Security.symbol.ilike(f"%{search}%") | Security.name.ilike(f"%{search}%"))
+                select(Security).where(Security.symbol.ilike(pattern) | Security.name.ilike(pattern))
             )
         else:
             result = await session.execute(select(Security).order_by(Security.symbol))
@@ -475,7 +524,7 @@ async def get_securities(search: str = ""):
 
 
 @app.get("/api/search")
-async def search(query: str = ""):
+async def search(query: str = "") -> dict:
     """GET /api/search — fuzzy search securities by query; returns symbol, suggestions with LTP."""
     if not query:
         return {"results": [], "suggestions": []}
@@ -536,7 +585,7 @@ def _enrich_item(item: dict, price_map: dict) -> dict:
 
 
 @app.get("/api/market/overview")
-async def market_overview():
+async def market_overview() -> dict:
     """GET /api/market/overview — return indices, summary, top gainers/losers, most active, and sectors."""
     try:
         merolagani_prices, merolagani_summary, summary_resp = await asyncio.gather(
@@ -635,7 +684,7 @@ async def market_overview():
 
 
 @app.get("/api/market/index-history")
-async def market_index_history():
+async def market_index_history() -> dict:
     """GET /api/market/index-history — return merged daily, hourly, and 30-second index history with current snapshot."""
     async with live_cache_lock:
         daily = LIVE_CACHE.get("index_history", [])
@@ -658,9 +707,8 @@ async def market_index_history():
             if p.get('time', 0) > hourly_ts:
                 merged.append(p)
 
-    now_utc = datetime.now(timezone.utc)
-    now_npt = now_utc + timedelta(hours=5, minutes=45)
-    today_start_npt = datetime(now_npt.year, now_npt.month, now_npt.day, tzinfo=timezone.utc) - timedelta(hours=5, minutes=45)
+    now_npt = datetime.now(NPT)
+    today_start_npt = datetime(now_npt.year, now_npt.month, now_npt.day, tzinfo=NPT)
     today_ts = int(today_start_npt.timestamp())
     today_intraday = [p for p in (tail or []) if p.get('time', 0) >= today_ts]
 
@@ -674,7 +722,7 @@ async def market_index_history():
 
 
 @app.get("/api/market/live")
-async def market_live():
+async def market_live() -> dict:
     """GET /api/market/live — return live prices, indices, gainers, losers, turnovers, and sectors."""
     try:
         prices_resp, summary_resp, ss_resp = await asyncio.gather(
@@ -742,7 +790,7 @@ async def market_live():
 
 
 @app.get("/api/market/status")
-async def market_status():
+async def market_status() -> dict:
     """GET /api/market/status — return market open/close status and schedule."""
     s = get_market_status()
     return {
@@ -784,7 +832,7 @@ async def _get_live_candle(symbol: str) -> dict | None:
 
 
 @app.get("/api/stocks/{symbol}/history")
-async def stock_history(symbol: str, start: str = "", end: str = ""):
+async def stock_history(symbol: str, start: str = "", end: str = "") -> dict:
     """GET /api/stocks/{symbol}/history — return daily price history with technical indicators and signal."""
     sym = symbol.upper()
     today = date.today()
@@ -830,7 +878,7 @@ async def stock_history(symbol: str, start: str = "", end: str = ""):
 
 
 @app.get("/api/stocks/{symbol}/detail")
-async def stock_detail(symbol: str):
+async def stock_detail(symbol: str) -> dict:
     """GET /api/stocks/{symbol}/detail — return company detail with Sharesansar enrichment (pivot, moving averages, 52W range)."""
     detail = await merolagani_fetcher.get_company_detail(symbol)
     if not detail:
@@ -896,7 +944,7 @@ async def stock_detail(symbol: str):
 
 
 @app.get("/api/stocks/{symbol}/floorsheet")
-async def stock_floorsheet(symbol: str):
+async def stock_floorsheet(symbol: str) -> dict:
     """GET /api/stocks/{symbol}/floorsheet — return recent floor-sheet trades for a symbol."""
     try:
         rows = await sharesansar_fetcher.get_floorsheet(symbol)
@@ -907,7 +955,7 @@ async def stock_floorsheet(symbol: str):
 
 
 @app.get("/api/signals")
-async def get_signals(signal_type: str = ""):
+async def get_signals(signal_type: str = "") -> dict:
     """GET /api/signals — return generated trading signals, optionally filtered by type."""
     async with async_session() as session:
         q = select(Signal).order_by(desc(Signal.confidence), Signal.generated_at).limit(200)
@@ -927,7 +975,7 @@ async def get_signals(signal_type: str = ""):
 
 
 @app.post("/api/signals/generate")
-async def trigger_signals():
+async def trigger_signals() -> dict:
     """POST /api/signals/generate — manually trigger signal generation for all tracked symbols."""
     try:
         await generate_signals()
@@ -938,7 +986,7 @@ async def trigger_signals():
 
 
 @app.post("/api/backtest")
-async def backtest(symbol: str = "NABIL", fast_ma: int = 20, slow_ma: int = 50, days: int = 365):
+async def backtest(symbol: str = "NABIL", fast_ma: int = 20, slow_ma: int = 50, days: int = 365) -> dict:
     """POST /api/backtest — run a moving-average crossover backtest for a given symbol and parameters.
 
     Args:
@@ -957,7 +1005,7 @@ async def backtest(symbol: str = "NABIL", fast_ma: int = 20, slow_ma: int = 50, 
 
 
 @app.get("/api/portfolio")
-async def get_portfolio():
+async def get_portfolio() -> dict:
     """GET /api/portfolio — return portfolio holdings with live prices, P&L calculations."""
     async with async_session() as session:
         rows = await session.execute(
@@ -1010,7 +1058,7 @@ async def get_portfolio():
 
 
 @app.post("/api/portfolio/holdings")
-async def add_holding(symbol: str = "", quantity: int = 0, avg_cost: float = 0, buy_date: str = "", notes: str = ""):
+async def add_holding(symbol: str = "", quantity: int = 0, avg_cost: float = 0, buy_date: str = "", notes: str = "") -> dict:
     """POST /api/portfolio/holdings — add a new portfolio holding.
 
     Args:
@@ -1040,7 +1088,7 @@ async def add_holding(symbol: str = "", quantity: int = 0, avg_cost: float = 0, 
 
 
 @app.put("/api/portfolio/holdings/{holding_id}")
-async def update_holding(holding_id: int, quantity: int = 0, avg_cost: float = 0, notes: str = ""):
+async def update_holding(holding_id: int, quantity: int = 0, avg_cost: float = 0, notes: str = "") -> dict:
     """PUT /api/portfolio/holdings/{holding_id} — update quantity, avg_cost, or notes for a holding."""
     async with async_session() as session:
         result = await session.execute(select(PortfolioHolding).where(PortfolioHolding.id == holding_id))
@@ -1058,7 +1106,7 @@ async def update_holding(holding_id: int, quantity: int = 0, avg_cost: float = 0
 
 
 @app.delete("/api/portfolio/holdings/{holding_id}")
-async def delete_holding(holding_id: int):
+async def delete_holding(holding_id: int) -> dict:
     """DELETE /api/portfolio/holdings/{holding_id} — remove a portfolio holding by ID."""
     async with async_session() as session:
         result = await session.execute(select(PortfolioHolding).where(PortfolioHolding.id == holding_id))
@@ -1071,7 +1119,7 @@ async def delete_holding(holding_id: int):
 
 
 @app.get("/api/stocks/compare")
-async def compare_stocks(symbols: str = ""):
+async def compare_stocks(symbols: str = "") -> dict:
     """GET /api/stocks/compare — compare technical indicators and prices for up to 5 symbols.
 
     Args:
@@ -1234,7 +1282,7 @@ async def _fetch_yonepse_history(symbol: str, max_days: int = 60) -> list[dict]:
 
 
 @app.get("/api/ipos")
-async def get_ipos(page: int = 1, per_page: int = 20):
+async def get_ipos(page: int = 1, per_page: int = 20) -> dict:
     """GET /api/ipos — return paginated list of current and upcoming IPOs."""
     if page == 1 and per_page == 20:
         cached, ts = await get_ipo_cache()
@@ -1247,27 +1295,27 @@ async def get_ipos(page: int = 1, per_page: int = 20):
 
 
 @app.get("/api/brokers/top")
-async def brokers_top(period: str = "monthly", limit: int = 20):
+async def brokers_top(period: str = "monthly", limit: int = 20) -> dict:
     """GET /api/brokers/top — return top brokers by transaction volume for a given period."""
     await _ensure_broker_cache()
     return {"brokers": get_top_brokers(period=period, limit=limit)}
 
 
 @app.get("/api/brokers/search")
-async def brokers_search(q: str = ""):
+async def brokers_search(q: str = "") -> dict:
     """GET /api/brokers/search — search brokers by name or code."""
     await _ensure_broker_cache()
     return {"brokers": search_brokers(q)}
 
 
 @app.get("/api/sectors")
-async def sectors_list():
+async def sectors_list() -> dict:
     """GET /api/sectors — return list of all market sectors."""
     return {"sectors": get_sectors()}
 
 
 @app.get("/api/sectors/{sector_name}/stocks")
-async def sector_stocks(sector_name: str):
+async def sector_stocks(sector_name: str) -> dict:
     """GET /api/sectors/{sector_name}/stocks — return stocks belonging to a given sector."""
     stocks = get_stocks_by_sector(sector_name)
     return {"sector": sector_name, "stocks": stocks}
@@ -1281,6 +1329,14 @@ GUIDE_SYSTEM_PROMPT = (
     "brokers, demat accounts, MeroShare, technical/fundamental analysis, fees, "
     "and taxes in Nepal.\n"
     "- If asked about anything else, politely decline.\n\n"
+    "INDEX DISAMBIGUATION:\n"
+    "- \"NEPSE\" (or \"NEPSE Index\") refers to the NEPSE market benchmark index — "
+    "NOT a company stock.\n"
+    "- \"Sensitive Index\", \"Float Index\", and all other sub-indices are also "
+    "market indices, not stocks.\n"
+    "- There is NO stock with the symbol \"NEPSE\". If the user asks about the "
+    "index, use the PROVIDED DATA's index values — do NOT look for a company.\n"
+    "- If no index data is provided, say \"Index data is not available right now.\"\n\n"
     "TONE & CONVERSATION:\n"
     "- Be friendly, warm, and approachable. You are a helpful assistant, not a data report.\n"
     "- Greetings (\"hi\", \"hello\", \"good morning\"): respond warmly and offer help.\n"
@@ -1324,8 +1380,6 @@ GUIDE_SYSTEM_PROMPT = (
     "- Do NOT provide any data, analysis, or information about the suggested symbol.\n"
     "- Wait for the user to confirm before doing anything else.\n\n"
     "CONFIRMATIONS:\n"
-    "- If the user says 'yes', 'correct', 'okay', or similar after you suggested "
-    "a symbol, respond with a brief confirmation.\n"
     "- Example: 'Showing RIDI chart on the Trade page.'\n"
     "- Do NOT treat 'yes' as a new question or try to find another symbol.\n\n"
     "STRICT FORMAT RULES:\n"
@@ -1342,7 +1396,7 @@ GUIDE_SYSTEM_PROMPT = (
 
 
 @app.get("/api/guide/search")
-async def guide_search(q: str = ""):
+async def guide_search(q: str = "") -> dict:
     """GET /api/guide/search — search the knowledge base or fall back to Ollama for answers."""
     if not q:
         return {"entries": get_popular_entries()}
@@ -1373,7 +1427,7 @@ async def guide_search(q: str = ""):
 
 
 @app.get("/api/guide/brokers")
-async def guide_brokers(search: str = ""):
+async def guide_brokers(search: str = "") -> dict:
     """GET /api/guide/brokers — search the broker directory (guide context)."""
     await _ensure_broker_cache()
     return {"brokers": search_brokers(search)}
@@ -1387,9 +1441,12 @@ class QuestionRequest(BaseModel):
 def detect_intent(query: str, symbols: list[str]) -> str:
     """Classify a user query into one of: compare, indicator, price, overview, or guide."""
     q = query.lower()
+    INDEX_NAMES = ["nepse", "sensitive index", "float index"]
+    if any(idx in q for idx in INDEX_NAMES) and any(w in q for w in ["index", "what", "value", "current", "how", "today", "level", "benchmark", "market"]):
+        return "overview"
     if len(symbols) >= 2:
         return "compare"
-    if len(symbols) == 1 and any(w in q for w in ["rsi", "macd", "sma", "moving average", "bollinger", "atr", "adx", "indicator", "signal", "technical", "index"]):
+    if len(symbols) == 1 and any(w in q for w in ["rsi", "macd", "sma", "moving average", "bollinger", "atr", "adx", "indicator", "signal", "technical"]):
         return "indicator"
     if len(symbols) == 1 and any(w in q for w in ["price", "ltp", "current", "how much", "rate", "value", "chart", "show", "display"]):
         return "price"
@@ -1425,8 +1482,8 @@ async def build_data_context(symbols: list[str]) -> str:
                 val = idx.get("currentValue")
                 chg = idx.get("change", idx.get("perChange"))
                 lines.append(f"  {name}: {val}" + (f" ({chg:+.2f}%)" if chg else ""))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("build_data_context: index fetch failed: %s", e)
 
     records_by_symbol = {}
     try:
@@ -1438,8 +1495,8 @@ async def build_data_context(symbols: list[str]) -> str:
             )
             for r in rows.scalars().all():
                 records_by_symbol.setdefault(r.symbol, []).append(r.to_dict())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("build_data_context: DB query failed: %s", e)
 
     for sym in symbols[:5]:
         sym_u = sym.upper()
@@ -1478,8 +1535,8 @@ async def build_data_context(symbols: list[str]) -> str:
             cb = merolagani_fetcher.circuit_breaker_status('merolagani')
             if cb != 'open':
                 detail = await merolagani_fetcher.get_company_detail(sym_u)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("build_data_context: Merolagani detail fetch failed for %s: %s", sym_u, e)
         if not detail:
             try:
                 ss_detail = await sharesansar_fetcher.get_company_detail(sym_u)
@@ -1497,8 +1554,8 @@ async def build_data_context(symbols: list[str]) -> str:
                         detail['120d_avg'] = str(ph['avg_120d'])
                     if ph.get('avg_180d'):
                         detail['180d_avg'] = str(ph['avg_180d'])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("build_data_context: Sharesansar detail fallback failed for %s: %s", sym_u, e)
         if detail:
             if detail.get("sector"):
                 lines.append(f"  Sector: {detail['sector']}")
@@ -1736,8 +1793,8 @@ async def _generate_answer(req: QuestionRequest):
                     for g in losers[:5]:
                         lines.append(f"  - {g.get('symbol')}: {g.get('percentageChange')}%")
             data_context = "\n".join(lines)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("_generate_answer: market overview build failed: %s", e)
 
     if chart_intent and not fuzzy_suggestion and symbol:
         system_prompt = (
@@ -1832,13 +1889,13 @@ async def _generate_answer(req: QuestionRequest):
 
 
 @app.post("/api/ask")
-async def ask_question(req: QuestionRequest):
+async def ask_question(req: QuestionRequest) -> StreamingResponse:
     """POST /api/ask — ask the AI assistant a question; returns a streaming SSE response."""
     return StreamingResponse(_generate_answer(req), media_type="text/event-stream")
 
 
 @app.get("/api/health")
-async def health():
+async def health() -> dict:
     """GET /api/health — return system health: database, data sources, scheduler, and Ollama status."""
     db_ok = False
     try:

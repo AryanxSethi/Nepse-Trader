@@ -1,3 +1,5 @@
+import re
+
 LOOKUP_TABLE = [
     5, 8, 4, 7, 9, 3, 1, 0, 6, 2,
     5, 8, 4, 7, 9, 3, 1, 0, 6, 2,
@@ -55,12 +57,10 @@ def extract_salts(css_text: str) -> tuple[int, int]:
     for line in css_text.splitlines():
         line = line.strip()
         if 'salt1' in line.lower() or '--salt1' in line:
-            import re
             m = re.search(r'[-]?\d+', line)
             if m:
                 salt1 = int(m.group())
         if 'salt2' in line.lower() or '--salt2' in line:
-            import re
             m = re.search(r'[-]?\d+', line)
             if m:
                 salt2 = int(m.group())

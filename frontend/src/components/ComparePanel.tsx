@@ -7,6 +7,7 @@ import { formatNPR } from '../utils/format'
 import { fetchCompare } from '../api/endpoints'
 import { NetworkError, TimeoutError } from '../api/client'
 import type { CompareItem } from '../api/endpoints'
+import type { PricePoint } from '../types'
 
 
 function formatNum(n: number | null): string {
@@ -35,7 +36,7 @@ function cellClass(value: number | null | string, key: string) {
 }
 
 function getValue(item: CompareItem, key: string) {
-  return (item as any)[key] ?? null
+  return (item as Record<string, unknown>)[key] ?? null
 }
 
 const METRICS = [
@@ -172,14 +173,14 @@ export default function ComparePanel({ initialSymbols }: { initialSymbols?: stri
           {data[0].prices && data[0].prices.length >= 2 && (
             <div className="rounded-xl bg-surface-card border border-border p-4">
               <h4 className="text-xs font-semibold text-text mb-3">{data[0].symbol} — Price Chart</h4>
-              <StockChart data={data[0].prices as any} height={300} />
+              <StockChart data={data[0].prices.map(p => ({ ...p, symbol: data[0].symbol, open: p.close, high: p.close, low: p.close, volume: 0 })) as PricePoint[]} height={300} />
             </div>
           )}
 
           {data[1].prices && data[1].prices.length >= 2 && (
             <div className="rounded-xl bg-surface-card border border-border p-4">
               <h4 className="text-xs font-semibold text-text mb-3">{data[1].symbol} — Price Chart</h4>
-              <StockChart data={data[1].prices as any} height={300} />
+              <StockChart data={data[1].prices.map(p => ({ ...p, symbol: data[1].symbol, open: p.close, high: p.close, low: p.close, volume: 0 })) as PricePoint[]} height={300} />
             </div>
           )}
         </div>

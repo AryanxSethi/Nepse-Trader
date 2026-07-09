@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { formatNPR } from '../utils/format'
+import { fetchStockDetail } from '../api/endpoints'
 import { SkeletonCompanyInfo } from './Skeleton'
 
 interface CompanyDetail {
@@ -51,14 +52,12 @@ export default function CompanyInfo({ symbol }: Props) {
   useEffect(() => {
     if (!symbol) return
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 10000)
     setLoading(true)
-    fetch(`/api/stocks/${encodeURIComponent(symbol)}/detail`, { signal: controller.signal })
-      .then(r => r.json())
-      .then(data => { if (!controller.signal.aborted) setDetail(data) })
-      .catch(() => { if (!controller.signal.aborted) setDetail({}) })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); clearTimeout(timeout) })
-    return () => { controller.abort(); clearTimeout(timeout) }
+    fetchStockDetail(symbol, { signal: controller.signal })
+      .then(data => setDetail(data))
+      .catch(() => setDetail({}))
+      .finally(() => setLoading(false))
+    return () => controller.abort()
   }, [symbol])
 
   if (loading) return <SkeletonCompanyInfo />

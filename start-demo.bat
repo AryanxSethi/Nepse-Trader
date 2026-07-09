@@ -47,11 +47,11 @@ echo [5/6] Starting Backend (port 8001)...
 for /f "tokens=5" %%a in ('netstat -ano ^| find ":8001" ^| find "LISTENING"') do taskkill /f /pid %%a >nul 2>&1
 powershell -Command "Get-NetTCPConnection -LocalPort 8001 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }" 2>nul
 set PYTHONPATH=%CD%\backend
-start "NEPSE Backend" cmd /c "cd /d D:\nepse-trader\backend && venv\Scripts\python -m uvicorn main:app --host 127.0.0.1 --port 8001"
+start "NEPSE Backend" cmd /c "cd /d %~dp0backend && venv\Scripts\python -m uvicorn main:app --host 127.0.0.1 --port 8001"
 
 :: 6. Start Vite frontend
 echo [6/6] Starting Frontend (port 5173)...
-start "NEPSE Frontend" cmd /c "cd /d D:\nepse-trader\frontend && npm run dev"
+start "NEPSE Frontend" cmd /c "cd /d %~dp0frontend && npm run dev"
 
 :: 7. Wait for backend health check
 echo Waiting for backend to be ready...
