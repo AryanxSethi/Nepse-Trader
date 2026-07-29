@@ -247,7 +247,7 @@ class MerolaganiFetcher:
                             if isinstance(entry, dict):
                                 v = entry.get('v')
                                 pc = entry.get('pc', 0)
-                                change = round(v * pc / 100, 2) if v and pc else None
+                                change = round(v * pc / 100, 2) if v is not None and pc is not None else None
                                 out[name] = {
                                     'name': name,
                                     'currentValue': v,

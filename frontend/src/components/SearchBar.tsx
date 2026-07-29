@@ -68,11 +68,12 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
     if (query === selectedSymbolRef.current) return
     clearTimeout(timer.current)
     if (query.length > 1) {
+      abortRef.current?.abort()
       timer.current = setTimeout(() => doSearch(query), 300)
     } else {
       setSuggestions([])
     }
-    return () => clearTimeout(timer.current)
+    return () => { clearTimeout(timer.current); abortRef.current?.abort() }
   }, [query, doSearch, mode])
 
   const handleSubmit = (e: React.FormEvent) => {

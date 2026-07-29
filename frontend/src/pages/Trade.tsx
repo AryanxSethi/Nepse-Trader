@@ -185,7 +185,7 @@ export default function Trade() {
                     )}
                     <div className="rounded-lg bg-yellow/10 border border-yellow/20 px-2 py-1 flex items-center gap-1">
                       <WarningIcon size={10} className="text-yellow shrink-0" />
-                      <p className="text-[10px] text-yellow font-medium">AI-generated — do your own research</p>
+                      <p className="text-[10px] text-yellow font-medium">Chart based on market price</p>
                     </div>
                   </div>
                 )}

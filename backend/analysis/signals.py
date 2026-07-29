@@ -39,6 +39,7 @@ async def generate_signals():
         for r in all_records:
             by_symbol.setdefault(r.symbol, []).append(r.to_dict())
 
+        added = False
         for sym in symbols:
             records = by_symbol.get(sym, [])
             if len(records) < 30:
@@ -60,4 +61,6 @@ async def generate_signals():
                 confidence=confidence,
                 reason=reason[:500],
             ))
+            added = True
+        if added:
             await session.commit()

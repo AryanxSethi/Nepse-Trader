@@ -65,7 +65,7 @@ export default function SymbolSearchInput({ onSelect, value = '', placeholder = 
       setSuggestions([])
       setOpen(false)
     }
-    return () => clearTimeout(timer.current)
+    return () => { clearTimeout(timer.current); abortRef.current?.abort() }
   }, [query, doSearch])
 
   const selectSuggestion = (s: SearchSuggestion) => {

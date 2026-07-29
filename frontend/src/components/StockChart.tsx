@@ -220,7 +220,10 @@ export default function StockChart({ data, indicators, overlays, height = 420 }:
       console.error('[StockChart] Render error:', err)
       setRenderError(true)
     }
-  }, [data, chartType, showIndicators, height, indicators, overlays])
+  }, [data, chartType, height, indicators, overlays,
+      showIndicators.sma20, showIndicators.sma50, showIndicators.bollinger,
+      showIndicators.vwap, showIndicators.pivot, showIndicators.prevClose,
+      showIndicators.range52w])
 
   if (data.length === 0) {
     return (

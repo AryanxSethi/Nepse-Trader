@@ -5,7 +5,6 @@ portfolio tracking, IPO listings, broker directory, and an AI-powered chat.
 """
 
 import asyncio
-import time as time_module
 import time
 import pandas as pd
 import httpx
@@ -63,7 +62,7 @@ def _strip_bold(t: str) -> str:
     return re.sub(r'\*\*(.+?)\*\*', r'\1', re.sub(r'__(.+?)__', r'\1', t))
 
 LIVE_CACHE = {"data": [], "timestamp": None, "index_history": [], "current_index": None,
-               "current_indices": None, "index_hourly": [], "index_30s": [], "last_updated": None}
+               "current_indices": {}, "index_hourly": [], "index_30s": [], "last_updated": None}
 live_cache_lock = asyncio.Lock()
 
 scheduler = MarketScheduler()
@@ -272,6 +271,7 @@ async def start_index_polling(cache: dict):
                     all_indices = base
 
                     now_npt = datetime.now(NPT)
+                    now_utc = datetime.now(timezone.utc)
 
                     vals: dict[str, float | None] = {}
                     for name, entry in all_indices.items():
@@ -510,7 +510,7 @@ async def get_companies() -> dict:
 
 
 @app.get("/api/securities")
-async def get_securities(search: str = "") -> dict:
+async def get_securities(search: str = "") -> list[dict]:
     """GET /api/securities — search securities by symbol or name; return all if no search query."""
     async with async_session() as session:
         if search:
@@ -955,7 +955,7 @@ async def stock_floorsheet(symbol: str) -> dict:
 
 
 @app.get("/api/signals")
-async def get_signals(signal_type: str = "") -> dict:
+async def get_signals(signal_type: str = "") -> list[dict]:
     """GET /api/signals — return generated trading signals, optionally filtered by type."""
     async with async_session() as session:
         q = select(Signal).order_by(desc(Signal.confidence), Signal.generated_at).limit(200)
@@ -1214,12 +1214,12 @@ async def _fetch_yonepse_history(symbol: str, max_days: int = 60) -> list[dict]:
     records = []
     seen_dates = set()
     sym_upper = symbol.upper()
-    deadline = time_module.monotonic() + 25.0
+    deadline = time.monotonic() + 25.0
     async with httpx.AsyncClient(timeout=10) as client:
         dates = [d for i in range(max_days) if (d := today - timedelta(days=i)).weekday() < 5]
         batch_size = 10
         for batch_start in range(0, len(dates), batch_size):
-            if time_module.monotonic() >= deadline:
+            if time.monotonic() >= deadline:
                 break
             batch = dates[batch_start:batch_start + batch_size]
             tasks = []

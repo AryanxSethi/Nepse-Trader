@@ -116,9 +116,9 @@ export default function Portfolio() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null)
 
-  const loadPortfolio = useCallback(async () => {
+  const loadPortfolio = useCallback(async (signal?: AbortSignal) => {
     try {
-      const resp = await fetchPortfolio()
+      const resp = await fetchPortfolio({ signal })
       setData({
         holdings: resp.holdings,
         total_invested: resp.total_invested,
@@ -136,9 +136,10 @@ export default function Portfolio() {
   }, [])
 
   useEffect(() => {
-    loadPortfolio()
-    const id = setInterval(loadPortfolio, POLL.PORTFOLIO)
-    return () => clearInterval(id)
+    const controller = new AbortController()
+    loadPortfolio(controller.signal)
+    const id = setInterval(() => loadPortfolio(controller.signal), POLL.PORTFOLIO)
+    return () => { controller.abort(); clearInterval(id) }
   }, [loadPortfolio])
 
   const handleDelete = async (id: number) => {

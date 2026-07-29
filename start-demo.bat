@@ -29,7 +29,7 @@ if errorlevel 1 (
 )
 
 :: 3. Seed database if first run
-if not exist backend\data\nepse.db (
+if not exist data\nepse.db (
     echo [3/6] First run detected - seeding database...
     set PYTHONPATH=%CD%\backend
     backend\venv\Scripts\python -c "import asyncio; from data.seeder import seed; asyncio.run(seed())"

@@ -60,9 +60,9 @@ export default function LiveMarket() {
   usePageTitle('Live Market')
   const marketStatus = useMarketStatus()
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
     try {
-      const json = await fetchMarketLive()
+      const json = await fetchMarketLive({ signal })
       setIndices(sortIndices(json.indices || []))
       setPrices(json.prices || [])
       setError(null)
@@ -75,12 +75,13 @@ export default function LiveMarket() {
   }, [])
 
   useEffect(() => {
-    fetchData()
+    const controller = new AbortController()
+    fetchData(controller.signal)
     let id: ReturnType<typeof setInterval> | null = null
     if (marketStatus.is_open) {
-      id = setInterval(fetchData, POLL.MARKET_OVERVIEW_OPEN)
+      id = setInterval(() => fetchData(controller.signal), POLL.MARKET_OVERVIEW_OPEN)
     }
-    return () => { if (id) clearInterval(id) }
+    return () => { controller.abort(); if (id) clearInterval(id) }
   }, [fetchData, marketStatus.is_open])
 
   const filtered = useMemo(() => {

@@ -63,13 +63,22 @@ export function useMarketStatus() {
   }, [])
 
   useEffect(() => {
-    const controller = new AbortController()
-    const startupTimer = setTimeout(() => refresh(controller.signal), 3000)
+    const controllers: AbortController[] = []
+    const startupTimer = setTimeout(() => {
+      const c = new AbortController()
+      controllers.push(c)
+      refresh(c.signal)
+    }, 3000)
     const interval = setInterval(() => {
       const c = new AbortController()
+      controllers.push(c)
       refresh(c.signal)
     }, POLL.MARKET_STATUS)
-    return () => { clearTimeout(startupTimer); clearInterval(interval); controller.abort() }
+    return () => {
+      clearTimeout(startupTimer)
+      clearInterval(interval)
+      for (const c of controllers) c.abort()
+    }
   }, [refresh])
 
   return status

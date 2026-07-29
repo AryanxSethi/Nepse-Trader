@@ -204,8 +204,8 @@ export interface PortfolioResponse {
 }
 
 /** Fetch user portfolio with holdings and summary. */
-export function fetchPortfolio(): Promise<PortfolioResponse> {
-  return apiGet(`${API_BASE}/portfolio`)
+export function fetchPortfolio(opts?: { signal?: AbortSignal }): Promise<PortfolioResponse> {
+  return apiGet(`${API_BASE}/portfolio`, opts)
 }
 
 export interface HoldingResponse {
