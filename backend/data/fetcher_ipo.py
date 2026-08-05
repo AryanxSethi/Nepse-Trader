@@ -24,11 +24,21 @@ def _load_static(page: int, per_page: int) -> dict:
         return {'data': [], 'pager': {'pageNo': 1, 'itemsPerPage': per_page, 'totalNextPages': -1, 'totalPages': 1}, '_meta': {'source': 'static', 'updated_at': ''}}
 
     all_items = []
+    defaults = {
+        'open_date_bs': '',
+        'close_date_bs': '',
+        'share_type': '',
+        'share_registrar': '',
+        'rating': '',
+        'sector': '',
+        'min_units': '',
+        'max_units': '',
+        'price_per_unit': '',
+    }
     for item in raw.get('upcoming', []):
-        all_items.append(item)
+        all_items.append({**defaults, **item})
     for item in raw.get('recently_closed', []):
-        item['status'] = 'closed'
-        all_items.append(item)
+        all_items.append({**defaults, **item, 'status': 'closed'})
 
     all_items.sort(key=lambda x: x.get('ipo_id', 0), reverse=True)
     total = len(all_items)

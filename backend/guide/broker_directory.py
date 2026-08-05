@@ -1,5 +1,6 @@
 """Broker directory — caches broker list and provides search/top queries."""
 
+import asyncio
 import time
 import logging
 
@@ -9,24 +10,26 @@ logger = logging.getLogger('broker_directory')
 
 _broker_cache: list[dict] | None = None
 _broker_cache_ts: float = 0
+_broker_lock = asyncio.Lock()
 CACHE_TTL = 300
 
 
 async def _ensure_brokers():
     """Refresh broker list from upstream if the cache is stale or empty."""
     global _broker_cache, _broker_cache_ts
-    now = time.time()
-    if _broker_cache is not None and now - _broker_cache_ts < CACHE_TTL:
-        return
-    raw = await fetch_brokers()
-    if raw:
-        _broker_cache = [transform_broker(b) for b in raw]
-        _broker_cache_ts = now
-        logger.info("Loaded %d brokers from yonepse", len(_broker_cache))
-    elif _broker_cache is None:
-        _broker_cache = []
-        _broker_cache_ts = now
-        logger.warning("No broker data available — empty list will be used")
+    async with _broker_lock:
+        now = time.time()
+        if _broker_cache is not None and now - _broker_cache_ts < CACHE_TTL:
+            return
+        raw = await fetch_brokers()
+        if raw:
+            _broker_cache = [transform_broker(b) for b in raw]
+            _broker_cache_ts = now
+            logger.info("Loaded %d brokers from yonepse", len(_broker_cache))
+        elif _broker_cache is None:
+            _broker_cache = []
+            _broker_cache_ts = now
+            logger.warning("No broker data available — empty list will be used")
 
 
 def search_brokers(query: str, _force_brokers: list | None = None) -> list[dict]:

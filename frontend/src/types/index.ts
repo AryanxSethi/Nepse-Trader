@@ -110,16 +110,21 @@ export interface SectorInfo {
 export interface IpoDetail {
   company: string
   symbol: string
-  units: string
   issue_size: string
-  date_range: string
   open_date: string
+  open_date_bs: string
   close_date: string
+  close_date_bs: string
   price_range: string
   status: string
-  is_reserved_share: boolean
-  reserved_for: string
-  url: string
+  share_type: string
+  share_registrar: string
+  rating: string
+  sector: string
+  min_units: string
+  max_units: string
+  price_per_unit: string
+  ipo_id?: number
 }
 
 export interface SearchSuggestion {

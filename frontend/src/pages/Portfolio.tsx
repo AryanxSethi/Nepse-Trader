@@ -49,8 +49,8 @@ function AddHoldingModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
       onAdded()
       onClose()
       toast.success('Holding added')
-    } catch (e: any) {
-      setError(e.message || 'Failed to add holding')
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to add holding')
     } finally {
       setSubmitting(false)
     }

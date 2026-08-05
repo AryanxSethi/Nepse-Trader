@@ -220,11 +220,11 @@ export interface StatusResponse {
   status: string
 }
 
-export interface IpoMeta {
-  page: number
-  per_page: number
-  total: number
-  total_pages: number | null
+export interface IpoPager {
+  pageNo: number
+  itemsPerPage: number
+  totalNextPages: number
+  totalPages: number
 }
 
 /** Add a new holding to the portfolio. */
@@ -248,7 +248,7 @@ export function deleteHolding(id: number): Promise<StatusResponse> {
 // --- IPOs ---
 
 /** Fetch IPO listings with pagination. */
-export function fetchIpos(page: number = 1, perPage: number = 20, opts?: { signal?: AbortSignal }): Promise<{ data: IpoDetail[]; meta: IpoMeta }> {
+export function fetchIpos(page: number = 1, perPage: number = 20, opts?: { signal?: AbortSignal }): Promise<{ data: IpoDetail[]; pager: IpoPager }> {
   return apiGet(`${API_BASE}/ipos?page=${page}&per_page=${perPage}`, opts)
 }
 

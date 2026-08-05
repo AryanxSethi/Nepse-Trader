@@ -21,7 +21,7 @@ def _parse_series_entry(entry: list) -> dict | None:
     if not entry or len(entry) < 2:
         return None
     price = entry[1]
-    if not isinstance(price, (int, float)):
+    if not isinstance(price, (int, float)) or price <= 0:
         return None
     return {
         "price": float(price),

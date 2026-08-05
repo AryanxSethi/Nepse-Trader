@@ -143,7 +143,7 @@ async def extract_symbols(text: str) -> list[str]:
         if len(symbols) >= 2:
             return symbols[:5]
     
-    cleaned = re.sub(r"\b(rsi|macd|sma|price|ltp|current|rate|value|compare|chart|of|the|a|an|is|what|how|show|me|for|in|to|and|vs|top|gainers|losers|today|market|overview|summary|indices|best|worst|nepse|nepal|stock|stocks|trading|start|do|does|did|has|have|been|like|know|tell|give|list|all|most|recent|last|past|date|time|above|below|over|under|with|without)\b", "", text_upper, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b(rsi|macd|sma|price|ltp|current|rate|value|compare|chart|of|the|a|an|is|what|how|show|me|for|in|to|and|vs|top|gainers|losers|today|market|overview|summary|indices|index|best|worst|nepse|nepal|sensitive|float|stock|stocks|trading|start|do|does|did|has|have|been|like|know|tell|give|list|all|most|recent|last|past|date|time|above|below|over|under|with|without|now|level|benchmark|much|hello|hi|hey|thanks|thank|bye|goodbye|namaste|morning|evening|okay|ok|yes|no|sure|please|just|there|so|well|then|see|open|close|high|low|volume|turnover|status|live|kati|cha|chha|ho|ke|yo|ko|ma|ra|pani|paryo)\b", "", text_upper, flags=re.IGNORECASE)
     cleaned = re.sub(r"[^a-zA-Z0-9 ]", "", cleaned).strip()
     words = [w for w in cleaned.split() if len(w) > 1]
     if words and len(words) <= 3 and sum(len(w) for w in words) <= 20:
@@ -170,6 +170,7 @@ async def parse_query(text: str) -> dict:
     result["end"] = date_info.get("end")
 
     clean = re.sub(r"(past|last|for|of|from|to|show|me|the)\s*\d*\s*(day|week|month|year|ytd|max|all)", "", text, flags=re.IGNORECASE)
+    clean = re.sub(r"\b(hello|hi|hey|thanks|thank|bye|goodbye|namaste|please|just|there|okay|ok|sure|yes|no|so|well|then|now)\b", "", clean, flags=re.IGNORECASE)
     clean = re.sub(r"\d{4}[\-/]\d{2}[\-/]\d{2}", "", clean)
     clean = re.sub(r"\d{2}[\-/]\d{2}[\-/]\d{4}", "", clean)
     clean = re.sub(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s*\d{0,4}", "", clean, flags=re.IGNORECASE)

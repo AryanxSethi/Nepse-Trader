@@ -5,34 +5,8 @@ import ErrorBanner from '../components/ErrorBanner'
 import RefreshIndicator from '../components/RefreshIndicator'
 import { DocumentIcon, InfoIcon, SourceIcon, ChevronLeftIcon, ChevronRightIcon } from '../components/Icons'
 import { SkeletonBlock } from '../components/Skeleton'
-import { fetchIpos } from '../api/endpoints'
-
-interface IPOItem {
-  company: string
-  symbol: string
-  issue_size: string
-  open_date: string
-  open_date_bs: string
-  close_date: string
-  close_date_bs: string
-  price_range: string
-  status: string
-  share_type: string
-  share_registrar: string
-  rating: string
-  sector: string
-  min_units: string
-  max_units: string
-  price_per_unit: string
-  ipo_id?: number
-}
-
-interface Pager {
-  pageNo: number
-  itemsPerPage: number
-  totalNextPages: number
-  totalPages: number
-}
+import { fetchIpos, type IpoPager } from '../api/endpoints'
+import type { IpoDetail } from '../types'
 
 const guideSections = [
   {
@@ -105,8 +79,8 @@ const PAGE_SIZE = 20
 export default function IPOSection() {
   usePageTitle('IPO / FPO')
   const [activeGuide, setActiveGuide] = useState<number | null>(null)
-  const [items, setItems] = useState<IPOItem[]>([])
-  const [pager, setPager] = useState<Pager | null>(null)
+  const [items, setItems] = useState<IpoDetail[]>([])
+  const [pager, setPager] = useState<IpoPager | null>(null)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState('')
@@ -119,8 +93,8 @@ export default function IPOSection() {
     setFetchError('')
     try {
       const result = await fetchIpos(p, PAGE_SIZE, { signal })
-      setItems((result.data || []) as unknown as IPOItem[])
-      setPager(result.meta as unknown as Pager)
+      setItems(result.data || [])
+      setPager(result.pager)
       setFetchedAt(new Date().toISOString())
     } catch (e: unknown) {
       if (e instanceof Error && e.name !== 'AbortError') {

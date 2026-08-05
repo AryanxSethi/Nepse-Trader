@@ -42,7 +42,7 @@ async def run_backtest(symbol: str, fast_ma: int = 20, slow_ma: int = 50, days: 
     df.loc[df["sma_fast"] > df["sma_slow"], "signal"] = 1
     df["position"] = df["signal"].diff()
     if df["signal"].iloc[0] == 1:
-        df["position"].iloc[0] = 1
+        df.loc[df.index[0], "position"] = 1
 
     balance = 100000
     shares = 0

@@ -19,7 +19,6 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
   const [error, setError] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const inputRef = useRef<HTMLInputElement>(null)
-  const externalUpdate = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
   const selectedSymbolRef = useRef('')
 
@@ -49,7 +48,6 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
       if (data.symbol && !data.suggestions?.length) {
         onSearch(data.symbol, data.start, data.end)
         setQuery(data.symbol)
-        externalUpdate.current = true
         setSuggestions([])
         return
       }
@@ -91,7 +89,6 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
       selectedSymbolRef.current = s.symbol
       onSearch(s.symbol)
       setQuery(s.symbol)
-      externalUpdate.current = true
       setSuggestions([])
     } else {
       doSearch(query)
@@ -104,7 +101,6 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
     selectedSymbolRef.current = s.symbol
     onSearch(s.symbol)
     setQuery(s.symbol)
-    externalUpdate.current = true
     setSuggestions([])
     inputRef.current?.blur()
   }

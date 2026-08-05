@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, desc, text
 from bs4 import BeautifulSoup
 
-from config import OLLAMA_URL, OLLAMA_MODEL, CORS_ORIGINS
+from config import OLLAMA_URL, OLLAMA_MODEL, CORS_ORIGINS, YONEPSE_BASE
 from database import init_db, async_session
 from models import Security, DailyPrice, Signal, PortfolioHolding
 from data.fetcher import (
@@ -203,6 +203,15 @@ def _normalize_index_name(name: str) -> str:
     return f"{n} Index"
 
 
+def _log_poll_failure(task: asyncio.Task) -> None:
+    """Log unexpected failures of the background index poll task."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning('Index poll task failed: %s', exc)
+
+
 async def start_index_polling(cache: dict):
     """Start a background task that polls index data at regular intervals.
 
@@ -308,7 +317,9 @@ async def start_index_polling(cache: dict):
                 logger.warning('Index poll failed: %s', e)
 
             await asyncio.sleep(10 if is_open else 300)
-    asyncio.create_task(_poll())
+
+    _poll_task = asyncio.create_task(_poll())
+    _poll_task.add_done_callback(_log_poll_failure)
 
 
 @asynccontextmanager
@@ -1225,7 +1236,7 @@ async def _fetch_yonepse_history(symbol: str, max_days: int = 60) -> list[dict]:
             tasks = []
             for d in batch:
                 date_str = d.strftime("%Y-%m-%d")
-                url = f"https://shubhamnpk.github.io/yonepse/data/ltp/daily/{date_str}.json"
+                url = f"{YONEPSE_BASE}/data/ltp/daily/{date_str}.json"
                 tasks.append(client.get(url))
             responses = await asyncio.gather(*tasks, return_exceptions=True)
             for d, resp in zip(batch, responses):
@@ -1354,14 +1365,14 @@ GUIDE_SYSTEM_PROMPT = (
     "  and similar closing phrases.\n"
     "- If the message is ONLY a closing (no new question or topic), respond\n"
     "  with a warm, final closing message and do NOT offer follow-up help.\n"
-    "- The closing should include \"Dhanyabad\" as the sign-off word\n"
-    "  and the disclaimer on its own line.\n"
+    "- The closing should be warm and brief, ending with the disclaimer on\n"
+    "  its own line.\n"
     "- Examples:\n"
     "  User: \"That's all for now, thank you.\"\n"
-    "  Assistant: \"Dhanyabad! Happy trading, and remember — the stock market "
+    "  Assistant: \"Goodbye! Happy trading, and remember — the stock market "
     "involves risk. Invest wisely.\"\n\n"
     "  User: \"Nothing else.\"\n"
-    "  Assistant: \"Dhanyabad! Wishing you successful investments. "
+    "  Assistant: \"Goodbye! Wishing you successful investments. "
     "The stock market involves risk — this is not financial advice.\"\n\n"
     "GUIDELINES:\n"
     "1. Base ALL numerical claims on PROVIDED DATA. If a metric is not in the "
@@ -1453,6 +1464,62 @@ def detect_intent(query: str, symbols: list[str]) -> str:
     if any(w in q for w in ["market", "overview", "gainers", "losers", "indices", "summary", "top", "index"]):
         return "overview"
     return "guide"
+
+
+INDEX_TOKENS = {
+    "nepse", "sensitive", "float", "index", "indices", "banking", "hydropower",
+    "development", "manufacturing", "microfinance", "finance", "mutual",
+    "insurance", "nonlife", "debenture", "preference", "hotel", "trading",
+    "tourism", "others",
+}
+
+_SMALL_TALK_FILLERS = re.compile(
+    r"\b(please|just|there|so|well|then|now|again|help|doing|today)\b",
+    re.IGNORECASE,
+)
+_SMALL_TALK_PATTERNS = {
+    "farewell": re.compile(
+        r"\b(bye+|goodbye|good\s+bye|see\s+you|take\s+care|that.?s\s+all|that.?s\s+it|"
+        r"nothing\s+(?:more|else)|no\s+more\s+questions|all\s+done|i.?m\s+done|"
+        r"farewell|goodnight|good\s+night)\b",
+        re.IGNORECASE,
+    ),
+    "thanks": re.compile(
+        r"\b(thank\s+you+\s+very\s+much|thank\s+you+|thanks+|thank\b|dhanyabad|"
+        r"dhanyawad|thankful)\b",
+        re.IGNORECASE,
+    ),
+    "ack": re.compile(
+        r"^(?:ok+|okay|yes|yep|yeah|sure|alright|fine|got\s+it|understood|noted)[.!?]*$",
+        re.IGNORECASE,
+    ),
+    "greeting": re.compile(
+        r"\b(hi+|hello+|hey+|namaste+|greetings+|good\s+morning|good\s+afternoon|"
+        r"good\s+evening|how\s+are\s+you|how\s+do\s+you\s+do)\b[.!?]*$",
+        re.IGNORECASE,
+    ),
+}
+
+SMALL_TALK_RESPONSES = {
+    "greeting": "Hi! I can look up stock data, explain indicators, or give a market overview. What would you like to know?",
+    "thanks": "You're welcome! Is there anything else you'd like to know?",
+    "farewell": "Goodbye! Happy trading — the stock market involves risk. This is not financial advice.",
+    "ack": "Got it! Is there anything else you'd like to know?",
+}
+
+
+def detect_small_talk(question: str) -> str | None:
+    """Classify pure small talk (greeting/thanks/farewell/ack) needing no LLM or data."""
+    if not question:
+        return None
+    q = _SMALL_TALK_FILLERS.sub("", question)
+    q = re.sub(r"\s+", " ", q).strip()
+    if not q:
+        return None
+    for kind in ("farewell", "thanks", "ack", "greeting"):
+        if _SMALL_TALK_PATTERNS[kind].search(q):
+            return kind
+    return None
 
 
 async def build_data_context(symbols: list[str]) -> str:
@@ -1667,6 +1734,18 @@ async def _generate_answer(req: QuestionRequest):
         yield json.dumps({"type": "done"}) + "\n"
         return
 
+    small_talk = detect_small_talk(question)
+    if small_talk:
+        yield json.dumps({"type": "status", "status": "analyzing"}) + "\n"
+        yield json.dumps({
+            "type": "meta", "suggested_page": None, "symbol": None,
+            "symbols": None, "symbol_match_type": None,
+            "fuzzy_suggestion": None, "start_date": None, "end_date": None,
+        }) + "\n"
+        yield json.dumps({"type": "token", "token": SMALL_TALK_RESPONSES[small_talk]}) + "\n"
+        yield json.dumps({"type": "done"}) + "\n"
+        return
+
     NON_NEPSE_TOPICS = [
         "recipe", "cook", "bake", "movie", "song", "music", "album",
         "weather", "climate", "sports", "football", "cricket", "goal",
@@ -1696,6 +1775,10 @@ async def _generate_answer(req: QuestionRequest):
     candidate = None
     if chart_match:
         candidate = chart_match.group(1).strip().upper()
+        if candidate.lower() in INDEX_TOKENS:
+            chart_match = None
+            candidate = None
+    if chart_match:
         found = await fuzzy_search(candidate)
         if found:
             symbols = [found[0]["symbol"]]
@@ -1721,7 +1804,12 @@ async def _generate_answer(req: QuestionRequest):
         r'\b(show|display|me|chart|graph|plot|candle|candlestick|of|the|a|an|for|in|to|'
         r'and|vs|is|what|how|who|tell|give|list|know|my|are|can|do|does|did|has|have|'
         r'like|need|want|would|could|should|will|get|find|see|check|compare|market|overview|'
-        r'summary|gainers|losers|top|today|index|indices|sector|sectors|signal|signals)\b',
+        r'summary|gainers|losers|top|today|index|indices|sector|sectors|signal|signals|'
+        r'rsi|macd|sma|price|ltp|current|rate|value|nepse|nepal|sensitive|float|stock|stocks|'
+        r'trading|best|worst|now|level|benchmark|much|whats|please|just|there|help|doing|'
+        r'been|all|most|recent|last|past|date|time|above|below|over|under|with|without|'
+        r'start|open|close|high|low|volume|turnover|status|live|'
+        r'kati|cha|chha|ho|ke|yo|ko|ma|ra|pani|paryo)\b',
         '', question, flags=re.IGNORECASE
     )
     raw_clean = re.sub(r'[^A-Za-z ]', '', raw_clean).strip().upper()
