@@ -99,7 +99,7 @@ Invoke-WebRequest "http://127.0.0.1:8001/api/guide/search?q=how+to+start+trading
 - Ollama (port 11434): `qwen2.5:7b-instruct-q4_k_m` (4.68 GB, Q4_K_M quant)
 
 ## Data Stats (as of 2026-07-05)
-- DB: `backend/data/nepse.db` (or `data/nepse.db` depending on config — see `config.py:DATA_DIR`)
+- DB: `backend/data/nepse.db` (resolved via `backend/app/core/config.py:DATA_DIR`)
 - Securities: 376
 - DailyPrices: ~83k rows
 - Signals: ~350 (generated via technical analysis)
