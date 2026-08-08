@@ -13,7 +13,6 @@ interface BrokerData {
   name: string
   phone: string
   districts: string[]
-  tms_link: string
   branch_count: number
   active_status: string
   thirty_days_turnover: number
@@ -21,7 +20,7 @@ interface BrokerData {
 }
 
 
-/** Broker directory page with turnover rankings, search, and TMS links. */
+/** Broker directory page with turnover rankings and search. */
 export default function Brokers() {
   usePageTitle('Brokers')
   const [brokers, setBrokers] = useState<BrokerData[]>([])
@@ -152,7 +151,6 @@ export default function Brokers() {
                     <th className="text-right px-4 py-3 font-medium">{turnoverLabel} Turnover</th>
                     <th className="text-center px-4 py-3 font-medium">Branches</th>
                     <th className="text-center px-4 py-3 font-medium">Status</th>
-                    <th className="text-center px-4 py-3 font-medium">TMS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -184,18 +182,6 @@ export default function Brokers() {
                           }`}>
                             {b.active_status === 'A' ? 'Active' : 'Suspended'}
                           </span>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {b.tms_link && (
-                            <a
-                              href={`https://${b.tms_link}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[10px] text-accent hover:text-accent-hover underline"
-                            >
-                              TMS
-                            </a>
-                          )}
                         </td>
                       </tr>
                     )

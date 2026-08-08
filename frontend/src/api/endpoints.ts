@@ -36,15 +36,6 @@ export interface CompareItem {
   prices?: { date: string; close: number }[]
 }
 
-export interface FloorsheetRow {
-  contract_no: string
-  buyer: string
-  seller: string
-  quantity: number
-  rate: number
-  amount: number | null
-}
-
 export interface StockDetail {
   sector?: string
   market_price?: string
@@ -158,12 +149,6 @@ export function fetchStockHistory(symbol: string, start: string, end: string, op
 /** Fetch detailed info and fundamentals for a stock. */
 export function fetchStockDetail(symbol: string, opts?: { signal?: AbortSignal }): Promise<StockDetail> {
   return apiGet(`${API_BASE}/stocks/${encodeURIComponent(symbol)}/detail`, opts)
-}
-
-/** Fetch floorsheet transactions for a stock. */
-export async function fetchFloorsheet(symbol: string, opts?: { signal?: AbortSignal }): Promise<FloorsheetRow[]> {
-  const res = await apiGet<{ floorsheet: FloorsheetRow[] }>(`${API_BASE}/stocks/${encodeURIComponent(symbol)}/floorsheet`, opts)
-  return res.floorsheet
 }
 
 /** Compare multiple stocks side by side. */

@@ -954,17 +954,6 @@ async def stock_detail(symbol: str) -> dict:
     return detail
 
 
-@app.get("/api/stocks/{symbol}/floorsheet")
-async def stock_floorsheet(symbol: str) -> dict:
-    """GET /api/stocks/{symbol}/floorsheet — return recent floor-sheet trades for a symbol."""
-    try:
-        rows = await sharesansar_fetcher.get_floorsheet(symbol)
-        return {"floorsheet": (rows or [])[:200]}
-    except Exception as e:
-        logger.error("Floorsheet fetch failed for %s: %s", symbol, e)
-        return {"floorsheet": []}
-
-
 @app.get("/api/signals")
 async def get_signals(signal_type: str = "") -> list[dict]:
     """GET /api/signals — return generated trading signals, optionally filtered by type."""
@@ -1809,7 +1798,8 @@ async def _generate_answer(req: QuestionRequest):
         r'trading|best|worst|now|level|benchmark|much|whats|please|just|there|help|doing|'
         r'been|all|most|recent|last|past|date|time|above|below|over|under|with|without|'
         r'start|open|close|high|low|volume|turnover|status|live|'
-        r'kati|cha|chha|ho|ke|yo|ko|ma|ra|pani|paryo)\b',
+        r'hello|hi|hey|thanks|thank|bye|goodbye|namaste|okay|ok|yes|no|sure|see|'
+        r'morning|evening|kati|cha|chha|ho|ke|yo|ko|ma|ra|pani|paryo)\b',
         '', question, flags=re.IGNORECASE
     )
     raw_clean = re.sub(r'[^A-Za-z ]', '', raw_clean).strip().upper()

@@ -1,6 +1,6 @@
 """HTTP scraper for the Sharesansar website (sharesansar.com).
 
-Provides parsed stock data, indices, company details, floorsheet records,
+Provides parsed stock data, indices, company details,
 and live trading snapshots extracted from Sharesansar's HTML pages.
 
 All public methods use an internal circuit breaker (3 failures, 60s cooloff)
@@ -24,13 +24,11 @@ class SharesansarFetcher:
     """Scrapes and parses live trading data, stock prices, and company details from sharesansar.com.
 
     Uses an internal ``httpx.AsyncClient`` with automatic retry and circuit-breaker
-    protection. Caches today's share prices for ``TODAY_PRICE_TTL`` seconds and
-    CSRF tokens for ``CSRF_CACHE_TTL`` seconds.
+    protection. Caches today's share prices for ``TODAY_PRICE_TTL`` seconds.
     """
 
     CIRCUIT_BREAKER_THRESHOLD = 3
     CIRCUIT_BREAKER_COOLOFF = 60.0
-    CSRF_CACHE_TTL = 300
     TODAY_PRICE_TTL = 120
 
     # Column indices in the Sharesansar live price table (/live-trading)
@@ -74,8 +72,6 @@ class SharesansarFetcher:
             cooloff=self.CIRCUIT_BREAKER_COOLOFF,
         )
         self._lock = asyncio.Lock()
-        self._csrf_cache: dict[str, Any] = {}
-        self._csrf_cache_time: float = 0
         self._today_price_cache: dict[str, dict] | None = None
         self._today_price_cache_ts: float = 0
 
@@ -132,24 +128,6 @@ class SharesansarFetcher:
         except Exception as e:
             self._circuit_breaker.record_failure('sharesansar')
             logger.debug('Sharesansar GET %s failed: %s', path, e)
-            return None
-
-    async def _post(self, path: str, data: dict[str, str]) -> str | None:
-        """POST *data* to *path* (relative to Sharesansar base URL).
-
-        Returns the response body as text, or *None* on failure.
-        """
-        await self._init_client()
-        if self._circuit_breaker.is_open('sharesansar'):
-            return None
-        try:
-            resp = await self._client.post(f'{SHARESANSAR_BASE}{path}', data=data)
-            resp.raise_for_status()
-            self._circuit_breaker.record_success('sharesansar')
-            return resp.text
-        except Exception as e:
-            self._circuit_breaker.record_failure('sharesansar')
-            logger.debug('Sharesansar POST %s failed: %s', path, e)
             return None
 
     async def get_live_trading(self) -> dict:
@@ -486,83 +464,6 @@ class SharesansarFetcher:
                                 signal = 'BEARISH'
                     moving[label.lower()] = {'value': value, 'signal': signal}
                 return moving if moving else None
-        return None
-
-    async def get_floorsheet(self, symbol: str) -> list[dict]:
-        """Fetch the floorsheet (recent trades) for *symbol*.
-
-        Requires a CSRF token and the internal company ID, both scraped from
-        the company profile page.
-        Returns a list of dicts with *contract_no*, *buyer*, *seller*,
-        *quantity*, *rate*, and *amount*.
-        """
-        company_id = await self._get_company_id(symbol)
-        if not company_id:
-            return []
-        csrf = await self._get_csrf_token(f'/company/{symbol.upper()}')
-        if not csrf:
-            return []
-        html = await self._post('/company-floor-sheet', {
-            '_token': csrf,
-            'company': str(company_id),
-        })
-        if not html:
-            return []
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
-        if not table:
-            return []
-        tbody = table.find('tbody')
-        if not tbody:
-            return []
-        rows = []
-        for tr in tbody.find_all('tr'):
-            cells = tr.find_all('td')
-            if len(cells) < 6:
-                continue
-            try:
-                rows.append({
-                    'contract_no': cells[1].get_text(strip=True),
-                    'buyer': cells[2].get_text(strip=True),
-                    'seller': cells[3].get_text(strip=True),
-                    'quantity': _parse_int(cells[4]),
-                    'rate': _parse_float(cells[5]),
-                    'amount': _parse_float(cells[6]) if len(cells) > 6 else None,
-                })
-            except (ValueError, IndexError):
-                continue
-        return rows
-
-    async def _get_company_id(self, symbol: str) -> str | None:
-        """Scrape the internal numeric company ID for *symbol* from its profile page."""
-        html = await self._get(f'/company/{symbol.upper()}')
-        if not html:
-            return None
-        soup = BeautifulSoup(html, 'html.parser')
-        div = soup.find('div', id='companyid')
-        if div:
-            return div.get_text(strip=True)
-        return None
-
-    async def _get_csrf_token(self, path: str) -> str | None:
-        """Obtain a CSRF token from a Sharesansar page's ``<meta name="_token">``.
-
-        The token is cached for ``CSRF_CACHE_TTL`` seconds.
-        """
-        now = asyncio.get_running_loop().time()
-        async with self._lock:
-            if self._csrf_cache.get('token') and (now - self._csrf_cache_time) < self.CSRF_CACHE_TTL:
-                return self._csrf_cache['token']
-        html = await self._get(path)
-        if not html:
-            return None
-        soup = BeautifulSoup(html, 'html.parser')
-        meta = soup.find('meta', attrs={'name': '_token'})
-        if meta and meta.get('content'):
-            async with self._lock:
-                self._csrf_cache['token'] = meta['content']
-                self._csrf_cache_time = now
-            return meta['content']
         return None
 
     def circuit_breaker_status(self, source: str) -> str:

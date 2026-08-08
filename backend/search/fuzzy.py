@@ -17,6 +17,18 @@ from rapidfuzz import process, fuzz
 SECURITY_CACHE: list[dict] = []
 security_cache_lock = asyncio.Lock()
 
+_STOPWORD_RE = re.compile(
+    r"\b(rsi|macd|sma|price|ltp|current|rate|value|compare|chart|of|the|a|an|is|what|how|"
+    r"show|me|for|in|to|and|vs|top|gainers|losers|today|market|overview|summary|indices|"
+    r"index|best|worst|nepse|nepal|sensitive|float|stock|stocks|trading|start|do|does|did|"
+    r"has|have|been|like|know|tell|give|list|all|most|recent|last|past|date|time|above|"
+    r"below|over|under|with|without|now|level|benchmark|much|hello|hi|hey|thanks|thank|"
+    r"bye|goodbye|namaste|morning|evening|okay|ok|yes|no|sure|please|just|there|so|well|"
+    r"then|see|open|close|high|low|volume|turnover|status|live|doing|kati|cha|chha|ho|ke|"
+    r"yo|ko|ma|ra|pani|paryo)\b",
+    re.IGNORECASE,
+)
+
 
 async def set_security_cache(securities: list[dict]):
     """Replace the in-memory security cache with a fresh list."""
@@ -123,7 +135,8 @@ async def extract_symbols(text: str) -> list[str]:
             parts = text_upper.split(sep)
             symbols = []
             for part in parts:
-                cleaned = re.sub(r"[^a-zA-Z0-9 ]", "", part).strip()
+                cleaned = _STOPWORD_RE.sub("", part)
+                cleaned = re.sub(r"[^a-zA-Z0-9 ]", "", cleaned).strip()
                 if cleaned:
                     s = await fuzzy_search(cleaned)
                     if s:
@@ -135,7 +148,8 @@ async def extract_symbols(text: str) -> list[str]:
         parts = [p.strip() for p in text_upper.split(',') if p.strip()]
         symbols = []
         for part in parts:
-            cleaned = re.sub(r"[^a-zA-Z0-9 ]", "", part).strip()
+            cleaned = _STOPWORD_RE.sub("", part)
+            cleaned = re.sub(r"[^a-zA-Z0-9 ]", "", cleaned).strip()
             if cleaned:
                 s = await fuzzy_search(cleaned)
                 if s:
@@ -143,7 +157,7 @@ async def extract_symbols(text: str) -> list[str]:
         if len(symbols) >= 2:
             return symbols[:5]
     
-    cleaned = re.sub(r"\b(rsi|macd|sma|price|ltp|current|rate|value|compare|chart|of|the|a|an|is|what|how|show|me|for|in|to|and|vs|top|gainers|losers|today|market|overview|summary|indices|index|best|worst|nepse|nepal|sensitive|float|stock|stocks|trading|start|do|does|did|has|have|been|like|know|tell|give|list|all|most|recent|last|past|date|time|above|below|over|under|with|without|now|level|benchmark|much|hello|hi|hey|thanks|thank|bye|goodbye|namaste|morning|evening|okay|ok|yes|no|sure|please|just|there|so|well|then|see|open|close|high|low|volume|turnover|status|live|kati|cha|chha|ho|ke|yo|ko|ma|ra|pani|paryo)\b", "", text_upper, flags=re.IGNORECASE)
+    cleaned = _STOPWORD_RE.sub("", text_upper)
     cleaned = re.sub(r"[^a-zA-Z0-9 ]", "", cleaned).strip()
     words = [w for w in cleaned.split() if len(w) > 1]
     if words and len(words) <= 3 and sum(len(w) for w in words) <= 20:

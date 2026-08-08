@@ -9,7 +9,7 @@ Local PoC agentic trading web app for NEPSE (Nepal Stock Exchange) with AI assis
 - **AI**: Ollama with `qwen2.5:7b-instruct-q4_k_m`
 - **Primary Data**: yonepse (GitHub JSON CDN — live prices, summary, indices, brokers, status)
 - **Secondary Data**: Merolagani (scraped — company detail, SignalR index streaming, index history)
-- **Tertiary Data**: Sharesansar (scraped — VWAP, pivots, MA signals, floorsheet, volume, all-indices)
+- **Tertiary Data**: Sharesansar (scraped — VWAP, pivots, MA signals, volume, all-indices)
 
 ## Important Build Note
 - `npx tsc --noEmit` passes but **`npm run build`** (which runs `tsc -b`) is stricter — catches `erasableSyntaxOnly` violations, template literal type mismatches, and null-safety issues that `--noEmit` misses
@@ -30,10 +30,6 @@ Local PoC agentic trading web app for NEPSE (Nepal Stock Exchange) with AI assis
 ### Search Fixes
 - Fixed `fetchSearch` return type — was `Promise<SearchSuggestion[]>` (bare array) but backend returns `{suggestions: [...], symbol, start, end}` — broke all autocomplete and NLP symbol detection
 - `SearchBar` and `SymbolSearchInput` now receive correct response shape
-
-### Floorsheet Fix
-- Fixed `fetchFloorsheet` return type — unwraps `res.floorsheet` so component gets the array, not the wrapper object
-- Timeout/abort now shows user-visible message instead of silent swallow
 
 ### Codebase Audit Fixes (HIGH priority)
 1. **NameError on startup** — `set_security_cache` moved inside try block with empty fallback
@@ -77,9 +73,6 @@ Invoke-WebRequest "http://127.0.0.1:8001/api/search?query=NABIL"
 
 # Stock detail
 Invoke-WebRequest "http://127.0.0.1:8001/api/stocks/NABIL/detail"
-
-# Floorsheet
-Invoke-WebRequest "http://127.0.0.1:8001/api/stocks/NABIL/floorsheet"
 
 # Compare
 Invoke-WebRequest "http://127.0.0.1:8001/api/stocks/compare?symbols=NABIL,SCB"

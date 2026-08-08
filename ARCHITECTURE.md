@@ -77,7 +77,7 @@ The system follows a **fan-out / fallback** architecture: one primary source (Yo
 |--------|------|----------|-------------|----------|-----------------|
 | **Yonepse** | GitHub JSON CDN | PRIMARY | Always up (CDN) | Live prices, indices, top stocks, summary, brokers, market status | None (CDN) |
 | **Merolagani** | Scraped HTML + SignalR | SECONDARY | Unstable (IIS rate-limits) | Company detail (sector, 52W, 120D avg, yield), index history | 3 failures → 60s cooldown |
-| **Sharesansar** | Scraped HTML | TERTIARY | Moderate | Company detail fallback, pivot/MA/VWAP, floorsheet, all-indices | Instance-level, TTL caches |
+| **Sharesansar** | Scraped HTML | TERTIARY | Moderate | Company detail fallback, pivot/MA/VWAP, all-indices | Instance-level, TTL caches |
 | **SQLite / Disk** | Local DB + JSON files | LAST RESORT | Always available | Historical prices, portfolio, signals, backtest results | N/A |
 
 ### Fallback Chain
@@ -116,7 +116,7 @@ backend/
 ├── data/
 │   ├── fetcher.py                   # Yonepse HTTP fetcher (module-level circuit breaker)
 │   ├── merolagani_fetcher.py        # Merolagani scraper + SignalR index stream
-│   ├── sharesansar_fetcher.py       # Sharesansar scraper (detail, floorsheet, indices)
+│   ├── sharesansar_fetcher.py       # Sharesansar scraper (detail, indices)
 │   ├── broker_fetcher.py            # Yonepse broker list fetcher
 │   ├── cache.py                     # TTLCache with asyncio.Lock + disk persistence
 │   ├── market_scheduler.py          # Background scheduler for periodic data refresh
@@ -140,7 +140,6 @@ backend/
 | `/api/market/index-history` | GET | Historical index snapshots |
 | `/api/stocks/{symbol}/detail` | GET | Company detail + technical indicators |
 | `/api/stocks/{symbol}/history` | GET | Historical daily prices |
-| `/api/stocks/{symbol}/floorsheet` | GET | Recent floorsheet transactions |
 | `/api/stocks/compare` | GET | Side-by-side stock comparison |
 | `/api/search` | GET | Fuzzy symbol search + NLP intent |
 | `/api/signals` | GET | Generated trading signals |
@@ -194,7 +193,6 @@ frontend/src/
 ├── components/
 │   ├── SearchBar.tsx        # Stock search with autocomplete dropdown
 │   ├── SymbolSearchInput.tsx # Reusable symbol search (used in Portfolio modal)
-│   ├── FloorsheetPanel.tsx  # Expandable floorsheet table
 │   ├── ComparePanel.tsx     # Side-by-side stock comparison
 │   ├── FloatingChat.tsx     # Chatbot bubble + chat interface
 │   ├── StockChart.tsx       # Candlestick/line chart with indicators
@@ -209,7 +207,7 @@ frontend/src/
 │   └── ... (5+ more)
 ├── pages/
 │   ├── LiveMarket.tsx       # Real-time market dashboard
-│   ├── Trade.tsx            # Stock detail + chart + floorsheet
+│   ├── Trade.tsx            # Stock detail + chart + compare
 │   ├── Portfolio.tsx        # User portfolio with add/edit/delete
 │   ├── Brokers.tsx          # Broker ranking + search
 │   ├── Guide.tsx            # Educational guide + FAQ
@@ -369,7 +367,7 @@ IndexHistory
 - **N+1 prevention**: Single DB session for signal generation (fixed from 400+ to 1)
 - **Batch queries**: Portfolio holdings enrich prices in batch (1 API call for all symbols)
 - **Index polling**: Index history polled every 15s via SignalR or Yonepse fallback
-- **AbortController**: 30s timeout on all frontend API calls, 10s on floorsheet
+- **AbortController**: 30s timeout on all frontend API calls, 180s on compare/chat
 
 ---
 

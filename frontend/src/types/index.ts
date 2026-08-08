@@ -82,7 +82,6 @@ export interface Broker {
   address: string
   phone: string
   districts?: string[]
-  tms_link?: string
   branch_count?: number
   active_status?: string
   thirty_days_turnover?: number
@@ -95,7 +94,6 @@ export interface BrokerDetail {
   name: string
   phone: string
   districts: string[]
-  tms_link: string
   branch_count: number
   active_status: string
   thirty_days_turnover: number

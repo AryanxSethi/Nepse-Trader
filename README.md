@@ -8,7 +8,6 @@ A real-time NEPSE stock analysis platform with technical indicators, portfolio t
 - **Technical Analysis** — RSI, MACD, SMA, ADX, VWAP, pivot levels with auto-generated BUY/SELL/HOLD signals
 - **Portfolio Tracker** — Add/manage holdings with live P&L calculation
 - **Stock Comparison** — Compare 2 stocks side-by-side with indicators and AI signals
-- **Floorsheet Data** — Transaction-level trade history from Sharesansar
 - **Backtesting** — SMA crossover strategy backtester with equity curves
 - **IPO Database** — Paginated IPO listings from nepalipaisa with BS/AD dates
 - **LLM Chat** — Streaming AI assistant powered by local Ollama
@@ -25,7 +24,7 @@ nepse-trader/
 │   ├── models.py             # ORM models
 │   ├── data/
 │   │   ├── fetcher.py        # yonepse data fetchers (live, summary, indices, top, IPO)
-│   │   ├── sharesansar_fetcher.py  # Sharesansar scraping (VWAP, pivots, floorsheet)
+│   │   ├── sharesansar_fetcher.py  # Sharesansar scraping (VWAP, pivots)
 │   │   ├── merolagani_fetcher.py    # Merolagani scraping (prices, company details)
 │   │   ├── nepalipaisa_fetcher.py   # nepalipaisa IPO API
 │   │   ├── broker_fetcher.py        # Broker directory fetcher
@@ -105,7 +104,6 @@ ollama pull qwen2.5:7b-instruct-q4_k_m
 | GET | `/api/search` | Fuzzy symbol search |
 | GET | `/api/stocks/{symbol}/history` | Price history + indicators |
 | GET | `/api/stocks/{symbol}/detail` | Company detail (includes VWAP, pivots, MA signals) |
-| GET | `/api/stocks/{symbol}/floorsheet` | Transaction-level floorsheet data |
 | GET | `/api/stocks/compare` | Multi-stock comparison |
 | GET | `/api/signals` | BUY/SELL/HOLD signals |
 | POST | `/api/signals/generate` | Trigger signal generation |
@@ -127,7 +125,7 @@ ollama pull qwen2.5:7b-instruct-q4_k_m
 | Source | Type | Role |
 |--------|------|------|
 | [yonepse](https://shubhamnpk.github.io/yonepse) | JSON API | Primary (live prices, summary, indices) |
-| [Sharesansar](https://www.sharesansar.com) | HTML scraping | Secondary (VWAP, pivots, MA signals, floorsheet, real volume) |
+| [Sharesansar](https://www.sharesansar.com) | HTML scraping | Secondary (VWAP, pivots, MA signals, real volume) |
 | [Merolagani](https://merolagani.com) | HTML scraping | Tertiary (live prices, SignalR index streaming, 1Y yield) |
 | [nepalipaisa](https://nepalipaisa.com) | REST API | Primary (IPO listings with pagination) |
 

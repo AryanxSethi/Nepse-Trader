@@ -6,7 +6,6 @@ import StockChart from '../components/StockChart'
 import AISuggestion from '../components/AISuggestion'
 import CompanyInfo from '../components/CompanyInfo'
 import ComparePanel from '../components/ComparePanel'
-import FloorsheetPanel from '../components/FloorsheetPanel'
 import AISidebar from '../components/AISidebar'
 import FloatingChat from '../components/FloatingChat'
 import RefreshIndicator from '../components/RefreshIndicator'
@@ -17,19 +16,19 @@ const MS_PER_DAY = 86400000
 import { PageTransition } from '../components/Navbar'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { fetchStockDetail, type StockDetail } from '../api/endpoints'
-import { CompanyIcon, WarningIcon, ChartIcon, CompareIcon, TableIcon } from '../components/Icons'
+import { CompanyIcon, WarningIcon, ChartIcon, CompareIcon } from '../components/Icons'
 
 function toDateStr(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
-/** Stock analysis page with charts, comparison, floorsheet, and AI suggestions. */
+/** Stock analysis page with charts, comparison, and AI suggestions. */
 export default function Trade() {
   usePageTitle('Stock Analysis')
   const [searchParams, setSearchParams] = useSearchParams()
   const [symbol, setSymbol] = useState(searchParams.get('symbol') || '')
   const [dateDays, setDateDays] = useState(90)
-  const [activeTab, setActiveTab] = useState<'chart' | 'compare' | 'floorsheet'>('chart')
+  const [activeTab, setActiveTab] = useState<'chart' | 'compare'>('chart')
   const [compareSymbols, setCompareSymbols] = useState<string[] | null>(null)
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [detailData, setDetailData] = useState<StockDetail | null>(null)
@@ -141,17 +140,6 @@ export default function Trade() {
             <CompareIcon size={14} />
             Compare
           </button>
-          {symbol && (
-            <button
-              onClick={() => setActiveTab('floorsheet')}
-              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 ${
-                activeTab === 'floorsheet' ? 'border-accent text-accent' : 'border-transparent text-text-muted hover:text-text'
-              }`}
-            >
-              <TableIcon size={14} />
-              Floorsheet
-            </button>
-          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
@@ -159,8 +147,6 @@ export default function Trade() {
             <RefreshIndicator fetchedAt={fetchedAt} />
             {activeTab === 'compare' ? (
               <ComparePanel key={compareSymbols?.join('-') ?? 'default'} initialSymbols={compareSymbols} />
-            ) : activeTab === 'floorsheet' ? (
-              <FloorsheetPanel symbol={symbol} />
             ) : (
               <>
                 {symbol && (

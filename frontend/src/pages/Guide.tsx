@@ -78,7 +78,7 @@ export default function Guide() {
           <div className="animate-fade-in rounded-xl bg-surface-card border border-border p-6 text-center space-y-3">
             <CompanyIcon size={28} className="text-accent mx-auto" />
             <p className="text-sm text-text-muted">
-              Browse all 92 NEPSE member brokers with turnover rankings, district coverage, and TMS links.
+              Browse all 92 NEPSE member brokers with turnover rankings and district coverage.
             </p>
             <Link
               to="/brokers"

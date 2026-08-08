@@ -46,7 +46,6 @@ def transform_broker(raw: dict) -> dict:
         "name": raw.get("memberName", ""),
         "phone": raw.get("phone", ""),
         "districts": raw.get("districts", []),
-        "tms_link": raw.get("tmsLink", ""),
         "branch_count": raw.get("branchCount", 0),
         "active_status": raw.get("activeStatus", ""),
         "is_dealer": raw.get("isDealer", "N") == "Y",

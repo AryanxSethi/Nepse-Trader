@@ -13,7 +13,6 @@ export const TIMEOUT = {
   STATUS: 5_000,
   PORTFOLIO: 10_000,
   COMPARE: 180_000,
-  FLOORSHEET: 10_000,
   DETAIL: 10_000,
   CHAT: 180_000,
 } as const
