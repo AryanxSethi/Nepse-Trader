@@ -6,9 +6,9 @@ BUY/SELL/HOLD signals that differ from the latest stored signal.
 
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, desc
-from database import async_session
-from models import Security, DailyPrice, Signal
-from analysis.indicators import compute_indicators, compute_signal
+from app.db.session import async_session
+from app.db.models import Security, DailyPrice, Signal
+from app.analysis.indicators import compute_indicators, compute_signal
 import pandas as pd
 
 

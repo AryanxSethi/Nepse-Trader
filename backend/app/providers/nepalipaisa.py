@@ -6,8 +6,8 @@ Fetches IPO listings from nepalipaisa.com API and normalises status values.
 import logging
 from datetime import datetime, timezone
 
-from config import NEPALIPAISA_BASE
-from data._http import FetchResult, retry_get_json
+from app.core.config import NEPALIPAISA_BASE
+from app.providers.http import FetchResult, retry_get_json
 
 logger = logging.getLogger('nepalipaisa_fetcher')
 

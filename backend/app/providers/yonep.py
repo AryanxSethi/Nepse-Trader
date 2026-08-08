@@ -5,8 +5,8 @@ All functions share a single circuit breaker and retry logic via :mod:`data._htt
 
 import logging
 
-from config import YONEPSE_BASE
-from data._http import (
+from app.core.config import YONEPSE_BASE
+from app.providers.http import (
     CircuitBreaker,
     FetchResult,
     retry_get_json,

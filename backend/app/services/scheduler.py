@@ -8,7 +8,7 @@ import asyncio
 import logging
 from datetime import datetime, date, time, timedelta, timezone
 
-from data.fetcher import (
+from app.providers.yonep import (
     fetch_live_prices, fetch_market_summary, fetch_top_stocks,
     fetch_indices, fetch_market_status,
 )

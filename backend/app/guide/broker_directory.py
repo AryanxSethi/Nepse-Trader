@@ -4,7 +4,7 @@ import asyncio
 import time
 import logging
 
-from data.broker_fetcher import fetch_brokers, transform_broker
+from app.providers.brokers import fetch_brokers, transform_broker
 
 logger = logging.getLogger('broker_directory')
 

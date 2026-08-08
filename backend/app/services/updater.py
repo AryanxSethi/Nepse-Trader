@@ -5,10 +5,10 @@ from datetime import date, timedelta
 import httpx
 from sqlalchemy import select, func
 
-from config import YONEPSE_BASE
-from database import async_session
-from models import DailyPrice
-from analysis.signals import generate_signals
+from app.core.config import YONEPSE_BASE
+from app.db.session import async_session
+from app.db.models import DailyPrice
+from app.analysis.signals import generate_signals
 
 logger = logging.getLogger('updater')
 

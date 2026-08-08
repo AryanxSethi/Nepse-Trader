@@ -8,8 +8,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
-from database import async_session
-from models import DailyPrice
+from app.db.session import async_session
+from app.db.models import DailyPrice
 
 # NEPSE trading costs (percentage)
 BROKER_COMMISSION_RATE = 0.004  # 0.4%

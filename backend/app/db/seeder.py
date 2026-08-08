@@ -4,10 +4,10 @@ import asyncio
 import httpx
 from datetime import datetime
 from sqlalchemy import select
-from database import async_session, init_db
-from models import Security, DailyPrice
-from config import NEPSEMAN_BASE
-from data.fetcher import fetch_all_securities
+from app.db.session import async_session, init_db
+from app.db.models import Security, DailyPrice
+from app.core.config import NEPSEMAN_BASE
+from app.providers.yonep import fetch_all_securities
 
 
 async def seed_securities():

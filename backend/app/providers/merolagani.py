@@ -14,8 +14,8 @@ from urllib.parse import quote
 import httpx
 from bs4 import BeautifulSoup
 
-from config import MEROLAGANI_BASE, MEROLAGANI_TIMEOUT, DEFAULT_USER_AGENT
-from data._http import CircuitBreaker
+from app.core.config import MEROLAGANI_BASE, MEROLAGANI_TIMEOUT, DEFAULT_USER_AGENT
+from app.providers.http import CircuitBreaker
 
 logger = logging.getLogger('merolagani_fetcher')
 

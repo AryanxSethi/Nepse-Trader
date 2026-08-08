@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import Column, Date, DateTime, Float, Index, Integer, String, Text, UniqueConstraint
 
-from database import Base
+from app.db.session import Base
 
 
 class Security(Base):

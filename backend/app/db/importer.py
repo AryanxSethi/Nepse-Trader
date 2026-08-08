@@ -1,7 +1,7 @@
 """
 Import historical OHLC data from Aabishkar2/nepse-data GitHub repo.
-Usage: python -m backend.data.import_nepse_data NABIL
-       python -m backend.data.import_nepse_data --all
+Usage: python -m app.db.importer NABIL
+       python -m app.db.importer --all
 """
 
 import asyncio
@@ -12,9 +12,9 @@ from datetime import date, datetime
 
 import httpx
 
-from config import GITHUB_NEPSE_DATA
-from database import async_session, init_db
-from models import DailyPrice, Security
+from app.core.config import GITHUB_NEPSE_DATA
+from app.db.session import async_session, init_db
+from app.db.models import DailyPrice, Security
 from sqlalchemy import select
 
 

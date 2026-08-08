@@ -15,8 +15,8 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup
 
-from config import SHARESANSAR_BASE, SHARESANSAR_TIMEOUT, DEFAULT_USER_AGENT
-from data._http import CircuitBreaker
+from app.core.config import SHARESANSAR_BASE, SHARESANSAR_TIMEOUT, DEFAULT_USER_AGENT
+from app.providers.http import CircuitBreaker
 
 logger = logging.getLogger('sharesansar_fetcher')
 

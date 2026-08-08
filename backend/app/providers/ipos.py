@@ -5,11 +5,11 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from data.nepalipaisa_fetcher import fetch_ipos_from_nepalipaisa
+from app.providers.nepalipaisa import fetch_ipos_from_nepalipaisa
 
 logger = logging.getLogger('fetcher_ipo')
 
-IPO_JSON_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "ipos.json"
+IPO_JSON_PATH = Path(__file__).resolve().parents[3] / "data" / "ipos.json"
 
 
 def _load_static(page: int, per_page: int) -> dict:

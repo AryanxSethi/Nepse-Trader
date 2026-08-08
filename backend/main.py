@@ -14,7 +14,7 @@ import re
 from collections import defaultdict
 from datetime import datetime, timedelta, date, timezone
 from contextlib import asynccontextmanager
-from database import engine
+from app.db.session import engine
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(levelname)s: %(message)s')
 logger = logging.getLogger('main')
@@ -27,29 +27,29 @@ from pydantic import BaseModel
 from sqlalchemy import select, desc, text
 from bs4 import BeautifulSoup
 
-from config import OLLAMA_URL, OLLAMA_MODEL, CORS_ORIGINS, YONEPSE_BASE
-from database import init_db, async_session
-from models import Security, DailyPrice, Signal, PortfolioHolding
-from data.fetcher import (
+from app.core.config import OLLAMA_URL, OLLAMA_MODEL, CORS_ORIGINS, YONEPSE_BASE
+from app.db.session import init_db, async_session
+from app.db.models import Security, DailyPrice, Signal, PortfolioHolding
+from app.providers.yonep import (
     fetch_top_stocks,
     fetch_indices, fetch_all_securities,
     fetch_live_prices,
     fetch_market_summary,
 )
-from data.seeder import seed_securities
-from data.updater import run_daily_update
-from data.market_scheduler import MarketScheduler, get_market_status, NPT
-from data.merolagani_fetcher import MerolaganiFetcher
-from data.sharesansar_fetcher import SharesansarFetcher
-from analysis.indicators import compute_indicators, compute_signal
-from analysis.signals import generate_signals
-from analysis.backtest import run_backtest
-from search.fuzzy import fuzzy_search, parse_query, parse_date_query, extract_symbols, set_security_cache
-from guide.knowledge_base import find_guide_entry, get_popular_entries
-from guide.broker_directory import search_brokers, get_top_brokers, _ensure_brokers as _ensure_broker_cache
-from data.fetcher_sectors import get_sectors, get_stocks_by_sector, get_sector_for_symbol
-from data.fetcher_ipo import load_ipos
-from data.cache import (
+from app.db.seeder import seed_securities
+from app.services.updater import run_daily_update
+from app.services.scheduler import MarketScheduler, get_market_status, NPT
+from app.providers.merolagani import MerolaganiFetcher
+from app.providers.sharesansar import SharesansarFetcher
+from app.analysis.indicators import compute_indicators, compute_signal
+from app.analysis.signals import generate_signals
+from app.analysis.backtest import run_backtest
+from app.search.fuzzy import fuzzy_search, parse_query, parse_date_query, extract_symbols, set_security_cache
+from app.guide.knowledge_base import find_guide_entry, get_popular_entries
+from app.guide.broker_directory import search_brokers, get_top_brokers, _ensure_brokers as _ensure_broker_cache
+from app.providers.sectors import get_sectors, get_stocks_by_sector, get_sector_for_symbol
+from app.providers.ipos import load_ipos
+from app.providers.cache import (
     data_cache_get, data_cache_set,
     get_market_cache, set_market_cache,
     get_ipo_cache, set_ipo_cache,
@@ -1983,7 +1983,7 @@ async def health() -> dict:
     except Exception as e:
         logger.warning("Health check DB failed: %s", e)
 
-    from data.fetcher import circuit_breaker as fetcher_cb
+    from app.providers.yonep import circuit_breaker as fetcher_cb
 
     sources = {
         'yonepse': fetcher_cb.status('yonepse/live'),

@@ -5,7 +5,7 @@ Uses ``aiosqlite`` for async SQLite access.
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
-from config import DB_PATH
+from app.core.config import DB_PATH
 
 DATABASE_URL = f"sqlite+aiosqlite:///{DB_PATH.as_posix()}"
 
@@ -20,7 +20,7 @@ class Base(DeclarativeBase):
 async def init_db():
     """Create all tables defined in :mod:`models` if they do not exist."""
     async with engine.begin() as conn:
-        from models import Security, DailyPrice, Signal, PortfolioHolding
+        from app.db.models import Security, DailyPrice, Signal, PortfolioHolding
         await conn.run_sync(Base.metadata.create_all)
 
 

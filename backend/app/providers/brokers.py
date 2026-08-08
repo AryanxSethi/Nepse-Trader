@@ -2,8 +2,8 @@
 
 import logging
 
-from config import YONEPSE_BASE
-from data._http import (
+from app.core.config import YONEPSE_BASE
+from app.providers.http import (
     CircuitBreaker,
     FetchResult,
     retry_get_json,
