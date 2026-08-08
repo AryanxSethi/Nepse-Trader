@@ -10,22 +10,35 @@ import type { CompareItem } from '../api/endpoints'
 import type { PricePoint } from '../types'
 
 
-function formatNum(n: number | null): string {
-  if (n == null) return '\u2014'
-  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`
-  if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`
-  if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`
-  return n.toLocaleString()
+function toNum(v: unknown): number | null {
+  if (v == null) return null
+  if (typeof v === 'number') return isNaN(v) ? null : v
+  if (typeof v === 'string') {
+    const n = parseFloat(v.replace(/[^0-9.-]/g, ''))
+    return isNaN(n) ? null : n
+  }
+  return null
 }
 
-function formatPrice(n: number | null): string {
-  if (n == null) return '\u2014'
-  return formatNPR(n)
+function formatNum(n: unknown): string {
+  const num = toNum(n)
+  if (num == null) return '\u2014'
+  if (num >= 1e9) return `${(num / 1e9).toFixed(2)}B`
+  if (num >= 1e7) return `${(num / 1e7).toFixed(2)}Cr`
+  if (num >= 1e5) return `${(num / 1e5).toFixed(2)}L`
+  return num.toLocaleString()
 }
 
-function cellClass(value: number | null | string, key: string) {
-  if (key === 'percent_change' && typeof value === 'number') {
-    return value >= 0 ? 'text-green' : 'text-red'
+function formatPrice(n: unknown): string {
+  const num = toNum(n)
+  if (num == null) return '\u2014'
+  return formatNPR(num)
+}
+
+function cellClass(value: unknown, key: string) {
+  if (key === 'percent_change') {
+    const num = toNum(value)
+    if (num != null) return num >= 0 ? 'text-green' : 'text-red'
   }
   if (key === 'signal_type' && typeof value === 'string') {
     if (value === 'BUY') return 'text-green font-semibold'
@@ -36,23 +49,50 @@ function cellClass(value: number | null | string, key: string) {
 }
 
 function getValue(item: CompareItem, key: string) {
-  return (item as Record<string, unknown>)[key] ?? null
+  return (item as unknown as Record<string, unknown>)[key] ?? null
 }
 
-const METRICS = [
-  { label: 'LTP', key: 'ltp', fmt: (v: number | null) => formatPrice(v) },
-  { label: 'Change %', key: 'percent_change', fmt: (v: number | null) => v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : '\u2014' },
-  { label: 'Volume', key: 'volume', fmt: (v: number | null) => v != null ? v.toLocaleString() : '\u2014' },
+const METRICS: { label: string; key: string; fmt: (v: unknown) => string }[] = [
+  { label: 'LTP', key: 'ltp', fmt: (v: unknown) => formatPrice(v) },
+  { label: 'Change %', key: 'percent_change', fmt: (v: unknown) => {
+    const num = toNum(v)
+    return num != null ? `${num >= 0 ? '+' : ''}${num.toFixed(2)}%` : '\u2014'
+  } },
+  { label: 'Volume', key: 'volume', fmt: (v: unknown) => {
+    const num = toNum(v)
+    return num != null ? num.toLocaleString() : '\u2014'
+  } },
   { label: 'Turnover', key: 'turnover', fmt: formatNum },
   { label: 'Market Cap', key: 'market_cap', fmt: formatNum },
-  { label: 'RSI', key: 'rsi', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
-  { label: 'MACD', key: 'macd', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
-  { label: 'MACD Signal', key: 'macd_signal', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
-  { label: 'SMA20', key: 'sma20', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
-  { label: 'SMA50', key: 'sma50', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
-  { label: 'ADX', key: 'adx', fmt: (v: number | null) => v != null ? v.toFixed(2) : '\u2014' },
-  { label: 'Signal', key: 'signal_type', fmt: (v: string | null) => v || '\u2014' },
-  { label: 'Confidence', key: 'signal_confidence', fmt: (v: number | null) => v != null ? `${v}%` : '\u2014' },
+  { label: 'RSI', key: 'rsi', fmt: (v: unknown) => {
+    const num = toNum(v)
+    return num != null ? num.toFixed(2) : '\u2014'
+  } },
+  { label: 'MACD', key: 'macd', fmt: (v: unknown) => {
+    const num = toNum(v)
+    return num != null ? num.toFixed(2) : '\u2014'
+  } },
+  { label: 'MACD Signal', key: 'macd_signal', fmt: (v: unknown) => {
+    const num = toNum(v)
+    return num != null ? num.toFixed(2) : '\u2014'
+  } },
+  { label: 'SMA20', key: 'sma20', fmt: (v: unknown) => {
+    const num = toNum(v)
+    return num != null ? num.toFixed(2) : '\u2014'
+  } },
+  { label: 'SMA50', key: 'sma50', fmt: (v: unknown) => {
+    const num = toNum(v)
+    return num != null ? num.toFixed(2) : '\u2014'
+  } },
+  { label: 'ADX', key: 'adx', fmt: (v: unknown) => {
+    const num = toNum(v)
+    return num != null ? num.toFixed(2) : '\u2014'
+  } },
+  { label: 'Signal', key: 'signal_type', fmt: (v: unknown) => (typeof v === 'string' && v) || '\u2014' },
+  { label: 'Confidence', key: 'signal_confidence', fmt: (v: unknown) => {
+    const num = toNum(v)
+    return num != null ? `${num}%` : '\u2014'
+  } },
 ]
 
 /** Side-by-side comparison of two stocks with metrics table and charts. */
@@ -62,10 +102,12 @@ export default function ComparePanel({ initialSymbols }: { initialSymbols?: stri
   const [data, setData] = useState<CompareItem[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     if (!(symbol1 && symbol2)) {
       setData(null)
+      setLoading(false)
       return
     }
     setLoading(true)
@@ -88,7 +130,7 @@ export default function ComparePanel({ initialSymbols }: { initialSymbols?: stri
         setLoading(false)
       })
     return () => controller.abort()
-  }, [symbol1, symbol2])
+  }, [symbol1, symbol2, reloadKey])
 
   return (
     <div className="space-y-4">
@@ -133,7 +175,15 @@ export default function ComparePanel({ initialSymbols }: { initialSymbols?: stri
       {error && (
         <div className="rounded-lg bg-red/10 border border-red/20 p-3 flex items-start gap-2">
           <WarningIcon size={14} className="text-red shrink-0 mt-0.5" />
-          <p className="text-xs text-red">{error}</p>
+          <div className="flex-1">
+            <p className="text-xs text-red">{error}</p>
+            <button
+              onClick={() => setReloadKey((k) => k + 1)}
+              className="mt-2 text-xs text-accent hover:text-accent-hover underline"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       )}
 

@@ -59,7 +59,7 @@ export default function Trade() {
   )
   const endStr = toDateStr(new Date())
 
-  const { data, isLoading, error } = useStockHistory(symbol, startStr, endStr)
+  const { data, isLoading, error, refetch } = useStockHistory(symbol, startStr, endStr)
 
   useEffect(() => {
     if (data && !isLoading) {
@@ -179,11 +179,21 @@ export default function Trade() {
                 {error && (
                   <div className="rounded-xl bg-red/10 border border-red/20 p-4 flex items-start gap-3">
                     <WarningIcon size={18} className="text-red shrink-0 mt-0.5" />
-                    <p className="text-sm text-red">
-                      {symbol
-                        ? `Unable to load data for ${symbol}. The stock may have insufficient trading history.`
-                        : 'Select a stock to view the chart'}
-                    </p>
+                    <div className="flex-1">
+                      <p className="text-sm text-red">
+                        {symbol
+                          ? `Unable to load data for ${symbol}. The stock may have insufficient trading history.`
+                          : 'Select a stock to view the chart'}
+                      </p>
+                      {symbol && (
+                        <button
+                          onClick={() => refetch()}
+                          className="mt-2 text-xs text-accent hover:text-accent-hover underline"
+                        >
+                          Retry
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 

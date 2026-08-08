@@ -70,7 +70,8 @@ check("ipos", client.get("/api/ipos"))
 check("brokers top", client.get("/api/brokers/top"))
 check("brokers search", client.get("/api/brokers/search", params={"q": "Nabil"}))
 check("sectors", client.get("/api/sectors"))
-check("sectors stocks", client.get("/api/sectors/Banking/stocks"))
+check("sectors stocks", client.get("/api/sectors/Microfinance/stocks"))
+check("sectors unknown", client.get("/api/sectors/NotARealSector/stocks"), expect_status=404)
 
 # --- guide ---
 check("guide search", client.get("/api/guide/search", params={"q": "ipo"}))

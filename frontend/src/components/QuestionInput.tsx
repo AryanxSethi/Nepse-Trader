@@ -46,10 +46,18 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
 
   useEffect(() => {
     if (!initialized.current && symbol) {
-      const stored = localStorage.getItem('nepse-chat-history')
-      if (stored) {
-        try { setMessages(JSON.parse(stored)) } catch {}
-      }
+      try {
+        const stored = localStorage.getItem('nepse-chat-history')
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (Array.isArray(parsed)) {
+            const valid = parsed.filter((m): m is Message =>
+              m && typeof m === 'object' && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
+            ).slice(-20)
+            if (valid.length > 0) setMessages(valid)
+          }
+        }
+      } catch {}
       setMessages((prev) => {
         if (prev.length === 0) return [{ id: crypto.randomUUID(), role: 'assistant', content: `Selected **${symbol}**. ${welcomeRef.current}` }]
         return prev
@@ -116,7 +124,7 @@ export default function QuestionInput({ symbol, title, welcomeMessage, quickQuer
 
   useEffect(() => {
     try {
-      localStorage.setItem('nepse-chat-history', JSON.stringify(messages))
+      localStorage.setItem('nepse-chat-history', JSON.stringify(messages.slice(-20)))
     } catch (e) {
       console.warn('Failed to persist chat history:', e)
     }

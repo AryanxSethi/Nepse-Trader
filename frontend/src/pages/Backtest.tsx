@@ -40,7 +40,7 @@ export default function Backtest() {
       ).slice(0, 15)
     : []
 
-  const { data, isLoading, error } = useBacktest(symbol, fastMA, slowMA, days, run)
+  const { data, isLoading, error, refetch } = useBacktest(symbol, fastMA, slowMA, days, run)
 
   useEffect(() => {
     if (data && !isLoading) {
@@ -49,6 +49,10 @@ export default function Backtest() {
   }, [data, isLoading])
 
   const handleRun = () => {
+    if (!symbol) {
+      setErrorMsg('Select a stock')
+      return
+    }
     if (slowMA <= fastMA) {
       setErrorMsg('Slow MA must be greater than Fast MA')
       return
@@ -160,8 +164,14 @@ export default function Backtest() {
         </div>
 
         {error && (
-          <div className="rounded-xl bg-red/10 border border-red/20 p-3 text-sm text-red text-center">
-            Backtest failed. Not enough data or invalid parameters.
+          <div className="rounded-xl bg-red/10 border border-red/20 p-3 flex items-center justify-between gap-3">
+            <p className="text-sm text-red">Backtest failed. Not enough data or invalid parameters.</p>
+            <button
+              onClick={() => refetch()}
+              className="text-xs text-accent hover:text-accent-hover underline shrink-0"
+            >
+              Retry
+            </button>
           </div>
         )}
 

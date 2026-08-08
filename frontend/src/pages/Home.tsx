@@ -26,7 +26,7 @@ function timeAgo(iso: string | null): string {
 export default function Home() {
   usePageTitle('Market Overview')
   const navigate = useNavigate()
-  const { data, isLoading, error } = useMarketOverview()
+  const { data, isLoading, error, refetch } = useMarketOverview()
   const marketStatus = useMarketStatus()
 
   const handleSearch = useCallback((symbol: string) => {
@@ -80,7 +80,7 @@ export default function Home() {
                           </span>
                         </td>
                         <td className={`px-4 py-2.5 text-right font-mono-nums ${isPos ? 'text-green' : 'text-red'}`}>
-                          {isPos ? '+' : ''}{idx.percent_change?.toFixed(2)}%
+                          {idx.percent_change != null ? `${isPos ? '+' : ''}${Number(idx.percent_change).toFixed(2)}%` : '\u2014'}
                         </td>
                       </tr>
                     )
@@ -105,9 +105,17 @@ export default function Home() {
         {error && (
           <div className="rounded-xl bg-red/10 border border-red/20 p-4 flex items-start gap-3">
             <WarningIcon size={18} className="text-red shrink-0 mt-0.5" />
-            <p className="text-sm text-red">
-              Market data currently unavailable. NEPSE may be closed or the data source unreachable.
-            </p>
+            <div className="flex-1">
+              <p className="text-sm text-red">
+                Market data currently unavailable. NEPSE may be closed or the data source unreachable.
+              </p>
+              <button
+                onClick={() => refetch()}
+                className="mt-2 text-xs text-accent hover:text-accent-hover underline"
+              >
+                Retry
+              </button>
+            </div>
           </div>
         )}
 

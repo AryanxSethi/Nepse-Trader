@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { createChart, ColorType, LineSeries } from 'lightweight-charts'
+import { createChart, ColorType, LineSeries, type LineData, type Time } from 'lightweight-charts'
 import { useMarketStatus } from '../hooks/useMarketStatus'
 import { fetchIndexHistory } from '../api/endpoints'
 import { POLL } from '../config/constants'
@@ -82,16 +82,20 @@ export default function IndexChart() {
         const json = await fetchIndexHistory()
         const data = json.today?.length ? json.today : (json.snapshots ?? [])
         if (!data || data.length === 0) return
+        const toLine = (valueKey: string): LineData<Time>[] =>
+          data.map((s) => ({ time: s.time as unknown as Time, value: (s as { values: Record<string, number> }).values?.[valueKey] ?? 0 }))
         if (nepseRef.current) {
-          nepseRef.current.setData(data.map(s => ({ time: s.time as number, value: s.values['NEPSE'] ?? 0 })))
+          nepseRef.current.setData(toLine('NEPSE'))
         }
         if (sensRef.current) {
-          sensRef.current.setData(data.map(s => ({ time: s.time as number, value: s.values['Sensitive Index'] ?? 0 })))
+          sensRef.current.setData(toLine('Sensitive Index'))
         }
       } catch (err) { console.warn('[IndexChart] refresh failed:', err) }
     }
     refresh()
-    id = setInterval(refresh, POLL.SNAPSHOT_OPEN)
+    id = setInterval(() => {
+      if (!document.hidden) refresh()
+    }, POLL.SNAPSHOT_OPEN)
     return () => { if (id) clearInterval(id) }
   }, [marketStatus.is_open])
 

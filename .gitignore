@@ -32,3 +32,5 @@ htmlcov/
 *.orig
 ARCHITECTURE_REFERENCE.txt
 
+
+backend/data/

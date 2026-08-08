@@ -13,7 +13,7 @@ export default function Signals() {
   const navigate = useNavigate()
   const [signalType, setSignalType] = useState('')
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
-  const { data, isLoading, error } = useSignals(signalType)
+  const { data, isLoading, error, refetch } = useSignals(signalType)
 
   useEffect(() => {
     if (data && !isLoading) {
@@ -35,7 +35,15 @@ export default function Signals() {
         {error && (
           <div className="rounded-xl bg-red/10 border border-red/20 p-3 flex items-start gap-2">
             <WarningIcon size={16} className="text-red shrink-0 mt-0.5" />
-            <p className="text-sm text-red">Signal data unavailable. Generate signals from the backend.</p>
+            <div className="flex-1">
+              <p className="text-sm text-red">Signal data unavailable. Generate signals from the backend.</p>
+              <button
+                onClick={() => refetch()}
+                className="mt-2 text-xs text-accent hover:text-accent-hover underline"
+              >
+                Retry
+              </button>
+            </div>
           </div>
         )}
 

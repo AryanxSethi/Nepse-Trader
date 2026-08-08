@@ -79,7 +79,9 @@ export default function LiveMarket() {
     fetchData(controller.signal)
     let id: ReturnType<typeof setInterval> | null = null
     if (marketStatus.is_open) {
-      id = setInterval(() => fetchData(controller.signal), POLL.MARKET_OVERVIEW_OPEN)
+      id = setInterval(() => {
+        if (!document.hidden) fetchData(controller.signal)
+      }, POLL.MARKET_OVERVIEW_OPEN)
     }
     return () => { controller.abort(); if (id) clearInterval(id) }
   }, [fetchData, marketStatus.is_open])

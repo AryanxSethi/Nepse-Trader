@@ -1,17 +1,19 @@
 """Application configuration loaded from environment variables and defaults.
 
-The ``.env`` file at the project root is loaded automatically on import.
+The ``.env`` file at ``backend/.env`` is loaded automatically on import.
 """
 
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-BASE_DIR = Path(__file__).resolve().parents[3]
+BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BASE_DIR / "data"
 DB_PATH = DATA_DIR / "nepse.db"
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(BASE_DIR / ".env")
+
+DEBUG = os.getenv("DEBUG", "0").strip().lower() in ("1", "true", "yes")
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_k_m")

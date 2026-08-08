@@ -17,6 +17,13 @@ interface BrokerData {
   active_status: string
   thirty_days_turnover: number
   latest_turnover: number
+  weekly_turnover?: number
+}
+
+
+function asNum(v: unknown): number {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? parseFloat(v.replace(/[^0-9.]/g, '')) : NaN
+  return isNaN(n) ? 0 : n
 }
 
 
@@ -30,12 +37,12 @@ export default function Brokers() {
   const [fetchError, setFetchError] = useState('')
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
 
-  const fetchBrokers = useCallback(async (q: string, p: string) => {
+  const fetchBrokers = useCallback(async (q: string, p: string, signal?: AbortSignal) => {
     setLoading(true)
     setFetchError('')
     try {
         if (q) {
-          const data = await fetchBrokerSearch(q)
+          const data = await fetchBrokerSearch(q, { signal })
           setBrokers((data.brokers || []).map((b, i) => ({
             ...b, rank: i + 1,
             districts: b.districts || [],
@@ -43,13 +50,15 @@ export default function Brokers() {
             active_status: b.active_status || '',
             thirty_days_turnover: b.thirty_days_turnover || 0,
             latest_turnover: b.latest_turnover || 0,
+            weekly_turnover: (b as unknown as Record<string, unknown>).weekly_turnover as number || 0,
           } as BrokerData)))
         } else {
-          const data = await fetchBrokerTop(p, 50)
+          const data = await fetchBrokerTop(p, 50, { signal })
           setBrokers(data.brokers || [])
         }
         setFetchedAt(new Date().toISOString())
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return
       console.error('Brokers fetch failed:', e)
       setFetchError(e instanceof Error ? e.message : 'Failed to load broker data')
       setBrokers([])
@@ -59,11 +68,12 @@ export default function Brokers() {
   }, [])
 
   useEffect(() => {
-    const t = setTimeout(() => fetchBrokers(query, period), 200)
-    return () => clearTimeout(t)
+    const controller = new AbortController()
+    const t = setTimeout(() => fetchBrokers(query, period, controller.signal), 200)
+    return () => { clearTimeout(t); controller.abort() }
   }, [query, period, fetchBrokers])
 
-  const turnoverKey = period === 'daily' ? 'latest_turnover' : 'thirty_days_turnover'
+  const turnoverKey = period === 'daily' ? 'latest_turnover' : period === 'weekly' ? 'weekly_turnover' : 'thirty_days_turnover'
   const turnoverLabel = period === 'daily' ? 'Today' : period === 'weekly' ? 'Weekly Avg' : '30-Day'
   const rankLabel = period === 'daily' ? 'Today' : period === 'weekly' ? 'This Week' : 'This Month'
   const periods: { key: 'daily' | 'weekly' | 'monthly'; label: string }[] = [
@@ -173,7 +183,7 @@ export default function Brokers() {
                           {b.districts?.slice(0, 3).join(', ')}{b.districts?.length > 3 ? ` +${b.districts.length - 3}` : ''}
                         </td>
                         <td className="px-4 py-3 text-right text-text font-mono-nums text-xs font-medium">
-                          Rs {formatTurnover((b as Record<string, unknown>)[turnoverKey] as number || 0, 'nepali')}
+                          Rs {formatTurnover(asNum((b as unknown as Record<string, unknown>)[turnoverKey]), 'nepali')}
                         </td>
                         <td className="px-4 py-3 text-center text-text-muted text-xs">{b.branch_count}</td>
                         <td className="px-4 py-3 text-center">

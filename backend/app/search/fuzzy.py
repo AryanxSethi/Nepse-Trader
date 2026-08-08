@@ -8,14 +8,21 @@ Scoring strategy
 * Name substring (len(query) >= 5) → score 0.30
 """
 
+import json
+import logging
 import re
 import asyncio
 from datetime import timedelta, date
 from rapidfuzz import process, fuzz
 
+from app.core.config import DATA_DIR
+
+logger = logging.getLogger('search.fuzzy')
 
 SECURITY_CACHE: list[dict] = []
 security_cache_lock = asyncio.Lock()
+
+SECURITY_CACHE_PATH = DATA_DIR / "securities_cache.json"
 
 _STOPWORD_RE = re.compile(
     r"\b(rsi|macd|sma|price|ltp|current|rate|value|compare|chart|of|the|a|an|is|what|how|"
@@ -31,10 +38,27 @@ _STOPWORD_RE = re.compile(
 
 
 async def set_security_cache(securities: list[dict]):
-    """Replace the in-memory security cache with a fresh list."""
+    """Replace the in-memory security cache with a fresh list and persist to disk."""
     global SECURITY_CACHE
     async with security_cache_lock:
         SECURITY_CACHE = securities
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with open(SECURITY_CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(securities, f)
+    except OSError as e:
+        logger.warning("Failed to persist securities cache: %s", e)
+
+
+def load_securities_cache() -> list[dict]:
+    """Load the persisted securities list from disk (used when upstream fails)."""
+    try:
+        with open(SECURITY_CACHE_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        logger.warning("Failed to load securities cache: %s", e)
+        return []
 
 
 async def fuzzy_search(query: str, limit: int = 20) -> list[dict]:

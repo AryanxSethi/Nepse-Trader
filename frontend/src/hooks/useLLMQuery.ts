@@ -35,10 +35,12 @@ export function useLLMStream() {
   const [isPending, setIsPending] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const cancelledRef = useRef(false)
 
   const stream = useCallback(async (question: string, callbacks: StreamCallbacks) => {
     setIsPending(true)
     setError(null)
+    cancelledRef.current = false
 
     const controller = new AbortController()
     abortRef.current = controller
@@ -46,12 +48,16 @@ export function useLLMStream() {
     const timeoutId = setTimeout(() => controller.abort(), 180000)
 
     let fullAnswer = ''
+    let doneReceived = false
 
     try {
       let history: { role: string; content: string }[] = []
       try {
         const stored = localStorage.getItem('nepse-chat-history')
-        if (stored) history = JSON.parse(stored).slice(-6)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (Array.isArray(parsed)) history = parsed.slice(-6)
+        }
       } catch {}
 
       const res = await apiPostStream('/api/ask', { question, history }, { signal: controller.signal, timeout: 180000 })
@@ -81,6 +87,7 @@ export function useLLMStream() {
               fullAnswer += msg.token
               callbacks.onToken(msg.token)
             } else if (msg.type === 'done') {
+              doneReceived = true
               callbacks.onDone(fullAnswer)
             } else if (msg.type === 'status' && callbacks.onStatus) {
               callbacks.onStatus(msg.status)
@@ -98,6 +105,7 @@ export function useLLMStream() {
             fullAnswer += msg.token
             callbacks.onToken(msg.token)
           } else if (msg.type === 'done') {
+            doneReceived = true
             callbacks.onDone(fullAnswer)
           } else if (msg.type === 'status' && callbacks.onStatus) {
             callbacks.onStatus(msg.status)
@@ -106,10 +114,17 @@ export function useLLMStream() {
           console.warn('[useLLMStream] parse error on remaining buffer:', buffer.trim().slice(0, 80), e)
         }
       }
+
+      if (!doneReceived) {
+        callbacks.onDone(fullAnswer)
+      }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        callbacks.onToken('Request timed out. Please try a simpler question.')
-        callbacks.onDone(fullAnswer)
+        if (cancelledRef.current) return
+        if (!doneReceived) {
+          callbacks.onToken('Request timed out. Please try a simpler question.')
+          callbacks.onDone(fullAnswer)
+        }
         return
       }
       setError(err instanceof Error ? err : new Error(String(err)))
@@ -122,6 +137,7 @@ export function useLLMStream() {
   }, [])
 
   const cancel = useCallback(() => {
+    cancelledRef.current = true
     abortRef.current?.abort()
   }, [])
 
@@ -132,7 +148,10 @@ async function collectAnswer(question: string): Promise<AskResponse> {
   let history: { role: string; content: string }[] = []
   try {
     const stored = localStorage.getItem('nepse-chat-history')
-    if (stored) history = JSON.parse(stored).slice(-6)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      if (Array.isArray(parsed)) history = parsed.slice(-6)
+    }
   } catch {}
 
   const res = await apiPostStream('/api/ask', { question, history })

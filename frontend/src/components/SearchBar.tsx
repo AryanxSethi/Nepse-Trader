@@ -168,9 +168,11 @@ export default function SearchBar({ onSearch, placeholder = 'Search stock...', m
                   </span>
                 )}
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${
-                  s.match_type === 'exact' ? 'bg-green/10 text-green' : 'bg-yellow/10 text-yellow'
+                  s.match_type === 'exact' ? 'bg-green/10 text-green'
+                  : s.match_type === 'prefix' ? 'bg-accent/10 text-accent'
+                  : 'bg-yellow/10 text-yellow'
                 }`}>
-                  {s.match_type === 'exact' ? 'exact' : 'fuzzy'}
+                  {s.match_type === 'exact' ? 'exact' : s.match_type === 'prefix' ? 'prefix' : 'fuzzy'}
                 </span>
               </motion.button>
             ))}

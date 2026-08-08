@@ -123,7 +123,10 @@ export default function CompanyInfo({ symbol }: Props) {
         <InfoRow label="Previous Close" value={detail.prev_close ? formatNPR(detail.prev_close.replace(/[^0-9.]/g, '')) : undefined} />
         <InfoRow label="180 Day Avg" value={detail['180d_avg'] ? formatNPR(detail['180d_avg'].replace(/[^0-9.]/g, '')) : undefined} />
         {detail.volume && (
-          <InfoRow label="Volume" value={parseInt(detail.volume).toLocaleString()} />
+          <InfoRow label="Volume" value={(() => {
+            const parsed = parseInt(detail.volume.replace(/[^0-9]/g, ''))
+            return isNaN(parsed) ? detail.volume : parsed.toLocaleString()
+          })()} />
         )}
         {detail.confidence_score && (
           <InfoRow

@@ -29,6 +29,7 @@ async def run_backtest(symbol: str, fast_ma: int = 20, slow_ma: int = 50, days: 
             select(DailyPrice)
             .where(DailyPrice.symbol == symbol, DailyPrice.date >= cutoff)
             .order_by(DailyPrice.date)
+            .limit(days)
         )
         records = [r.to_dict() for r in rows.scalars().all()]
 

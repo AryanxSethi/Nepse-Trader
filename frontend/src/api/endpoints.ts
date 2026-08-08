@@ -69,10 +69,11 @@ export interface PortfolioHolding {
   quantity: number
   avg_cost: number
   ltp: number | null
-  change: number | null
+  name?: string
   invested: number
   current_value: number | null
-  pnl: number | null
+  pl: number | null
+  pl_percent: number | null
   notes: string
   created_at: string
 }
@@ -240,13 +241,13 @@ export function fetchIpos(page: number = 1, perPage: number = 20, opts?: { signa
 // --- Brokers ---
 
 /** Fetch top brokers by transaction volume. */
-export function fetchBrokerTop(period: string = "monthly", limit: number = 20): Promise<{ brokers: BrokerDetail[] }> {
-  return apiGet(`${API_BASE}/brokers/top?period=${period}&limit=${limit}`)
+export function fetchBrokerTop(period: string = "monthly", limit: number = 20, opts?: { signal?: AbortSignal }): Promise<{ brokers: BrokerDetail[] }> {
+  return apiGet(`${API_BASE}/brokers/top?period=${period}&limit=${limit}`, opts)
 }
 
 /** Search brokers by name or code. */
-export function fetchBrokerSearch(query: string): Promise<{ brokers: Broker[] }> {
-  return apiGet(`${API_BASE}/brokers/search?q=${encodeURIComponent(query)}`)
+export function fetchBrokerSearch(query: string, opts?: { signal?: AbortSignal }): Promise<{ brokers: Broker[] }> {
+  return apiGet(`${API_BASE}/brokers/search?q=${encodeURIComponent(query)}`, opts)
 }
 
 // --- Market ---

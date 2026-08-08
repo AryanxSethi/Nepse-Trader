@@ -19,7 +19,9 @@ from cachetools import TTLCache
 
 logger = logging.getLogger('cache')
 
-CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "cache"
+from app.core.config import DATA_DIR
+
+CACHE_DIR = DATA_DIR / "cache"
 
 MARKET_CACHE_TTL = 30
 IPO_CACHE_TTL = 60

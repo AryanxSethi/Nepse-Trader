@@ -113,7 +113,6 @@ export default function Portfolio() {
   const [showAdd, setShowAdd] = useState(false)
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null)
 
   const loadPortfolio = useCallback(async (signal?: AbortSignal) => {
@@ -138,14 +137,15 @@ export default function Portfolio() {
   useEffect(() => {
     const controller = new AbortController()
     loadPortfolio(controller.signal)
-    const id = setInterval(() => loadPortfolio(controller.signal), POLL.PORTFOLIO)
+    const id = setInterval(() => {
+      if (!document.hidden) loadPortfolio(controller.signal)
+    }, POLL.PORTFOLIO)
     return () => { controller.abort(); clearInterval(id) }
   }, [loadPortfolio])
 
   const handleDelete = async (id: number) => {
     try {
       await deleteHolding(id)
-      setDeleteError(null)
       setConfirmDelete(null)
       loadPortfolio()
       toast.success('Holding removed')
@@ -188,9 +188,6 @@ export default function Portfolio() {
 
         {error && (
           <ErrorBanner message={error} onRetry={() => { setLoading(true); loadPortfolio() }} onDismiss={() => setError(null)} />
-        )}
-        {deleteError && (
-          <ErrorBanner message={deleteError} onDismiss={() => setDeleteError(null)} />
         )}
 
         {/* Summary bar */}
@@ -244,7 +241,7 @@ export default function Portfolio() {
                   </tr>
                 )}
                 {(data?.holdings ?? []).map((h, i) => {
-                  const plPos = (h.pnl ?? 0) >= 0
+                  const plPos = (h.pl ?? 0) >= 0
                   return (
                     <motion.tr
                       key={h.id}
@@ -264,12 +261,12 @@ export default function Portfolio() {
                       <td className="px-4 py-3 text-right font-mono-nums text-text">{formatNPR(h.current_value)}</td>
                       <td className={`px-4 py-3 text-right font-mono-nums font-medium ${plPos ? 'text-green' : 'text-red'}`}>
                         <span className="flex items-center justify-end gap-1">
-                          {h.pnl != null && (plPos ? <TrendingUpIcon size={12} /> : <TrendingDownIcon size={12} />)}
-                          {formatChange(h.pnl)}
+                          {h.pl != null && (plPos ? <TrendingUpIcon size={12} /> : <TrendingDownIcon size={12} />)}
+                          {formatChange(h.pl)}
                         </span>
                       </td>
                       <td className={`px-4 py-3 text-right font-mono-nums font-medium ${plPos ? 'text-green' : 'text-red'}`}>
-                        {formatPercent(h.pnl != null && h.invested > 0 ? (h.pnl / h.invested) * 100 : null)}
+                        {formatPercent(h.pl_percent)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {confirmDelete === h.id ? (

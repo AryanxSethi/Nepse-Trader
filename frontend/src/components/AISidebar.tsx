@@ -8,14 +8,21 @@ const STORAGE_KEY = 'nepse-watchlist'
 function loadWatchlist(): string[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((s): s is string => typeof s === 'string' && /^[A-Z0-9]{1,30}$/i.test(s)).slice(0, 5)
   } catch {
     return []
   }
 }
 
 function saveWatchlist(list: string[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, 5)))
+  } catch {
+    // storage may be unavailable (private mode) — watchlist stays in memory
+  }
 }
 
 interface WatchlistPrice {
@@ -63,8 +70,11 @@ export default function AISidebar({ onSelectSymbol, currentSymbol }: Props) {
   }, [watchlist])
 
   useEffect(() => {
+    if (document.hidden) return
     refreshPrices()
-    const id = setInterval(refreshPrices, POLL.WATCHLIST)
+    const id = setInterval(() => {
+      if (!document.hidden) refreshPrices()
+    }, POLL.WATCHLIST)
     return () => clearInterval(id)
   }, [refreshPrices])
 
@@ -119,11 +129,13 @@ export default function AISidebar({ onSelectSymbol, currentSymbol }: Props) {
                     {p ? (
                       <>
                         <span className="text-[11px] text-text-muted font-mono-nums">
-                          {p.ltp != null ? p.ltp.toFixed(2) : '\u2014'}
+                          {typeof p.ltp === 'number' ? p.ltp.toFixed(2) : (
+                            p.ltp != null && !isNaN(Number(p.ltp)) ? Number(p.ltp).toFixed(2) : '\u2014'
+                          )}
                         </span>
-                        {p.percent_change != null && (
-                          <span className={`text-[11px] font-medium font-mono-nums ${p.percent_change >= 0 ? 'text-green' : 'text-red'}`}>
-                            {p.percent_change >= 0 ? '+' : ''}{p.percent_change.toFixed(1)}%
+                        {p.percent_change != null && !isNaN(Number(p.percent_change)) && (
+                          <span className={`text-[11px] font-medium font-mono-nums ${Number(p.percent_change) >= 0 ? 'text-green' : 'text-red'}`}>
+                            {Number(p.percent_change) >= 0 ? '+' : ''}{Number(p.percent_change).toFixed(1)}%
                           </span>
                         )}
                       </>

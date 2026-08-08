@@ -30,7 +30,10 @@ export default function EquityCurve({ data, strategyReturn, buyHoldReturn, loadi
     )
   }
 
-  const strategyColor = strategyReturn >= 0 ? '#22c55e' : '#ef4444'
+  const stratReturn = Number(strategyReturn)
+  const buyHold = Number(buyHoldReturn)
+
+  const strategyColor = stratReturn >= 0 ? '#22c55e' : '#ef4444'
   const buyHoldColor = '#3b82f6'
 
   return (
@@ -72,11 +75,11 @@ export default function EquityCurve({ data, strategyReturn, buyHoldReturn, loadi
       <div className="flex gap-4 mt-3 text-xs">
         <div className="flex items-center gap-2">
           <span className="w-3 h-0.5 rounded" style={{ background: strategyColor }} />
-          <span className="text-text-muted">Strategy: <span className="text-text font-medium">{strategyReturn > 0 ? '+' : ''}{strategyReturn}%</span></span>
+          <span className="text-text-muted">Strategy: <span className="text-text font-medium">{stratReturn > 0 ? '+' : ''}{stratReturn}%</span></span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-3 h-0.5 rounded" style={{ background: buyHoldColor }} />
-          <span className="text-text-muted">Buy & Hold: <span className="text-text font-medium">{buyHoldReturn > 0 ? '+' : ''}{buyHoldReturn}%</span></span>
+          <span className="text-text-muted">Buy & Hold: <span className="text-text font-medium">{buyHold > 0 ? '+' : ''}{buyHold}%</span></span>
         </div>
       </div>
     </div>

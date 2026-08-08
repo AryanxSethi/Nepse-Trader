@@ -49,17 +49,24 @@ async def fetch_ipos_from_nepalipaisa(page: int = 1, per_page: int = 20) -> dict
         return None
 
     api_result = data.get('result', {})
+    if not isinstance(api_result, dict):
+        logger.warning('nepalipaisa result is not a dict')
+        return None
     items = api_result.get('data', [])
     pager = api_result.get('pager', {})
 
-    if not items:
+    if not isinstance(items, list) or not items:
         return None
+    if not isinstance(pager, dict):
+        pager = {}
 
     total_next = pager.get('totalNextPages', -1)
     total_pages = (total_next + 1) if total_next >= 0 else 1
 
     normalized = []
     for item in items:
+        if not isinstance(item, dict):
+            continue
         raw_status = item.get('status', '')
         status = _normalize_status(raw_status)
 
