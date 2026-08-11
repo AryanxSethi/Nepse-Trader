@@ -127,7 +127,8 @@ export default function Portfolio() {
       })
       setFetchedAt(new Date().toISOString())
       setError(null)
-    } catch {
+    } catch (e) {
+      if (signal?.aborted) return
       setError('Failed to load portfolio data')
     } finally {
       setLoading(false)

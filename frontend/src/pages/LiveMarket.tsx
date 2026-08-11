@@ -67,7 +67,8 @@ export default function LiveMarket() {
       setPrices(json.prices || [])
       setError(null)
       setFetchedAt(new Date().toISOString())
-    } catch {
+    } catch (e) {
+      if (signal?.aborted) return
       setError('Failed to load market data. Check your connection.')
     } finally {
       setLoading(false)
